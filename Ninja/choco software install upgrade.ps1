@@ -1,121 +1,41 @@
 #Requires -Version 4.0
 
 <#
-01/14/2026 - date added by Chad
-03/20/2026 - Updated scripe to add "ignorechecksum" variable option
-.SYNOPSIS
-    This script allows you to install, uninstall, or upgrade an application using Chocolatey. If Chocolatey is not installed or is outdated, options are available to install or upgrade it before proceeding with the application action.
-.DESCRIPTION
-    This script allows you to install, uninstall, or upgrade an application using Chocolatey. If Chocolatey is not installed or is outdated, options are available to install or upgrade it before proceeding with the application action.
-.EXAMPLE
-    -Action "Install" -Name "vlc" -InstallChocolateyIfMissing -SkipSleep
-    Chocolatey is not installed.
-    Downloading Chocolatey's install script and installing.
-    URL 'https://community.chocolatey.org/install.ps1' was given.
-    Downloading the file...
-    Download Attempt 1
-    Forcing web requests to allow TLS v1.2 (Required for requests to Chocolatey.org)
-    Getting latest version of the Chocolatey package for download.
-    Not using proxy.
-    Getting Chocolatey from https://community.chocolatey.org/api/v2/package/chocolatey/2.3.0.
-    Downloading https://community.chocolatey.org/api/v2/package/chocolatey/2.3.0 to C:\Windows\TEMP\chocolatey\chocoInstall\chocolatey.zip
-    Not using proxy.
-    Extracting C:\Windows\TEMP\chocolatey\chocoInstall\chocolatey.zip to C:\Windows\TEMP\chocolatey\chocoInstall
-    Downloading 7-Zip commandline tool prior to extraction.
-    Downloading https://community.chocolatey.org/7za.exe to C:\Windows\TEMP\chocolatey\chocoInstall\7za.exe
-    Not using proxy.
-    Installing Chocolatey on the local machine
-    WARNING: It's very likely you will need to close and reopen your shell 
-    before you can use choco.
-    PATH environment variable does not have C:\ProgramData\chocolatey\bin in it. Adding...
-    WARNING: Not setting tab completion: Current user is SYSTEM user.
-    Ensuring Chocolatey commands are on the path
-    Ensuring chocolatey.nupkg is in the lib folder
-    Creating ChocolateyInstall as an environment variable (targeting 'Machine') 
-    Setting ChocolateyInstall to 'C:\ProgramData\chocolatey'
-    Restricting write permissions to Administrators
-    We are setting up the Chocolatey package repository.
-    The packages themselves go to 'C:\ProgramData\chocolatey\lib'
-    (i.e. C:\ProgramData\chocolatey\lib\yourPackageName).
-    A shim file for the command line goes to 'C:\ProgramData\chocolatey\bin'
-    and points to an executable in 'C:\ProgramData\chocolatey\lib\yourPackageName'.
+===============================================================================
+SCRIPT:      choco software install upgrade.ps1
+AUTHOR:      Chad Mark
+PLATFORM:    NinjaRMM
+CREATED:     01/14/2026
+UPDATED:     03/20/2026
 
-    Creating Chocolatey CLI folders if they do not already exist.
+DESCRIPTION:
+    Installs, upgrades, or uninstalls a software package on a Windows machine
+    using Chocolatey (https://chocolatey.org). If Chocolatey is not installed,
+    the script can optionally install it first. Also supports upgrading Chocolatey
+    itself before performing the package action.
 
-    chocolatey.nupkg file not installed in lib.
-    Attempting to locate it from bootstrapper.
-    Chocolatey CLI (choco.exe) is now ready.
-    You can call choco from anywhere, command line or powershell by typing choco.
-    Run choco /? for a list of functions.
-    You may need to shut down and restart powershell and/or consoles
-    first prior to using choco.
-    Installing the following packages:
-    vlc
-    By installing, you accept licenses for the packages.
-    Downloading package from source 'https://community.chocolatey.org/api/v2/'
+USAGE (NinjaRMM Script Variables):
+    action                      - Required. Install | Upgrade | Uninstall
+    packageName                 - Required. Chocolatey package name (e.g. "vlc", "googlechrome")
+                                  Find packages at: https://community.chocolatey.org/packages
+    version                     - Optional. Specific version to install (e.g. "3.0.18")
+    allowDowngrades             - Checkbox. Allow downgrading to an older version (requires version)
+    installChocolateyIfNecessary - Checkbox. Install Chocolatey if it is not already present
+    upgradeChocolatey           - Checkbox. Upgrade Chocolatey itself before running the action
+    skipSleep                   - Checkbox. Skip the random wait (1-15 min) used to avoid rate limiting
+    ignoreChecksums             - Checkbox. Bypass checksum verification (use when a package
+                                  checksum is outdated but the package is otherwise trusted)
 
-    chocolatey-compatibility.extension v1.0.0 [Approved]
-    chocolatey-compatibility.extension package files install completed. Performing other installation steps.
-    Installed/updated chocolatey-compatibility extensions.
-    The install of chocolatey-compatibility.extension was successful.
-    Deployed to 'C:\ProgramData\chocolatey\extensions\chocolatey-compatibility'
-    Downloading package from source 'https://community.chocolatey.org/api/v2/'
+NOTES:
+    - Must run as LOCAL ADMIN or SYSTEM
+    - Minimum OS: Windows 10, Windows Server 2012 R2
+    - Chocolatey package names are lowercase only (e.g. "vlc" not "VLC")
+    - Use ignoreChecksums sparingly - only when a known-good package has a stale checksum
 
-    chocolatey-core.extension v1.4.0 [Approved]
-    chocolatey-core.extension package files install completed. Performing other installation steps.
-    Installed/updated chocolatey-core extensions.
-    The install of chocolatey-core.extension was successful.
-    Deployed to 'C:\ProgramData\chocolatey\extensions\chocolatey-core'
-    Downloading package from source 'https://community.chocolatey.org/api/v2/'
-
-    vlc.install v3.0.21 [Approved]
-    vlc.install package files install completed. Performing other installation steps.
-    Installing 64-bit vlc.install...
-    vlc.install has been installed.
-    WARNING: No registry key found based on  'vlc.install'
-    WARNING: Can't find vlc.install install location
-    vlc.install may be able to be automatically uninstalled.
-    The install of vlc.install was successful.
-    Deployed to 'C:\Program Files\VideoLAN\VLC'
-    Downloading package from source 'https://community.chocolatey.org/api/v2/'
-
-    vlc v3.0.21 [Approved]
-    vlc package files install completed. Performing other installation steps.
-    The install of vlc was successful.
-    Deployed to 'C:\ProgramData\chocolatey\lib\vlc'
-
-    Chocolatey installed 4/4 packages. 
-    See the log for details (C:\ProgramData\chocolatey\logs\chocolatey.log).
-    Exit Code: 0
-    Successfully completed the action 'Install' for package 'vlc'.
-
-PARAMETER: -Action "ReplaceMeWithValidAction"
-    Valid actions are 'Install', 'Upgrade', or 'Uninstall' for your desired package.
-
-PARAMETER: -Name "NameOfApplication"
-    Name of the application you would like to uninstall, upgrade, or install. 
-    https://community.chocolatey.org/packages is a good resource to find this.
-
-PARAMETER: -Version "DesiredVersion"
-    Optionally, specify a version to install.
-
-PARAMETER: -AllowDowngrades
-    Allows downgrading existing installations to the specified version.
-
-PARAMETER: -InstallChocolateyIfMissing
-    If Chocolatey isn't installed, this option installs it before starting your action.
-
-PARAMETER: -UpgradeChocolatey
-    If an update for Chocolatey itself is available, this option upgrades it to the latest version.
-
-PARAMETER: -SkipSleep
-    The script waits for a random interval between 1 and 15 minutes before performing an action with Chocolatey to help avoid rate limiting.
-    Use this option to skip the wait. For more information, see https://docs.chocolatey.org/en-us/community-repository/community-packages-disclaimer#excessive-use.
-
-.NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2012 R2
-    Version: 1.1
-    Release Notes: Updated functions, removed writing to the error stream, removed update environment variables, added signature validation, updated comments, added the option to specify a version, and added data validation.
+CHANGE LOG:
+    01/14/2026 - Initial version added by Chad
+    03/20/2026 - Added ignoreChecksums variable option; fixed $env:$env: typo in param block
+===============================================================================
 #>
 
 [CmdletBinding()]
@@ -558,6 +478,9 @@ process {
     if ($AllowDowngrades) {
         $ChocoArguments.Add("--allow-downgrade")
     }
+    if ($IgnoreChecksums) {
+        $ChocoArguments.Add("--ignore-checksums")
+    }
     $ChocoArguments.Add("--yes")
     $ChocoArguments.Add("--nocolor")
     $ChocoArguments.Add("--no-progress")
@@ -583,4 +506,3 @@ end {
     
     
 }
-

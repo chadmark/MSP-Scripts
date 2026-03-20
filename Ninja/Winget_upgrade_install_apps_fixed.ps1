@@ -1,23 +1,43 @@
 #Requires -Version 5.1
 
 <#
-.SYNOPSIS
-    Install, Uninstall, or Upgrade a package using WinGet. Needs to be run as another user (preferably one with local admin permissions) and not as System. Please see this Ninja Dojo link. https://ninjarmm.zendesk.com/hc/en-us/articles/360016094532-Credential-Exchange
-.DESCRIPTION
-    Install, Uninstall, or Upgrade a package using WinGet. 
-    Needs to be run as another user (preferably one with local admin permissions) and not as System.
-    https://ninjarmm.zendesk.com/hc/en-us/articles/360016094532-Credential-Exchange
-.LINK
-    https://ninjarmm.zendesk.com/hc/en-us/articles/360016094532-Credential-Exchange
-.EXAMPLE
-    Preset Parameter: -WinGetArgs "Install vlc --accept-package-agreements --accept-source-agreements --silent --source winget"
-    Runs WinGet directly and installs VLC. If InstallWinget checkbox was checked, then WinGet will be installed first before running the command.
-.OUTPUTS
-    String[]
-.NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    https://learn.microsoft.com/en-us/windows/package-manager/winget/
-    Release Notes: Renamed script, added Script Variable support, added manual winget source appx install.
+===============================================================================
+SCRIPT:      Winget_upgrade_install_apps.ps1
+AUTHOR:      Chad Mark
+PLATFORM:    NinjaRMM
+CREATED:     03/20/2026
+UPDATED:     03/20/2026
+
+DESCRIPTION:
+    Installs, upgrades, or uninstalls a software package on a Windows machine
+    using WinGet (Windows Package Manager). If WinGet is not installed, the
+    script can optionally install it along with its dependencies. Must be run
+    as a local admin user — WinGet does NOT work under the SYSTEM account.
+
+USAGE (NinjaRMM Script Variables):
+    action                      - Required. Install | Upgrade | Uninstall
+    packageId                   - Required. WinGet package ID (e.g. "Google.Chrome")
+                                  Find IDs at: https://winget.run or run: winget search <name>
+    scope                       - Optional. user | machine — sets install scope
+    locale                      - Optional. Locale for install (e.g. "en-US")
+    acceptPackageAgreements     - Checkbox. Auto-accept package license agreements
+    acceptSourceAgreements      - Checkbox. Auto-accept WinGet source agreements (required for Uninstall)
+    silent                      - Checkbox. Run installer silently with no UI
+    installWingetIfNecessary    - Checkbox. Install WinGet if it is not already present
+
+IMPORTANT NOTES:
+    - Must run as LOCAL ADMIN — NOT as SYSTEM
+    - In NinjaRMM use "Run As" with a local admin credential
+      https://ninjarmm.zendesk.com/hc/en-us/articles/360016094532-Credential-Exchange
+    - Minimum OS: Windows 10, Windows Server 2016
+    - acceptSourceAgreements is required for Uninstall actions
+    - VCLibs dependency hash check is skipped during WinGet install — Microsoft
+      does not publish a hash for this file and it updates without notice
+
+CHANGE LOG:
+    03/20/2026 - Initial version. Fixed VCLibs hardcoded hash issue; hash check
+                 now skipped for VCLibs only since Microsoft provides no hash source
+===============================================================================
 #>
 
 param(
