@@ -2,41 +2,43 @@
 
 <#
 ===============================================================================
-SCRIPT:      Winget_upgrade_install_apps.ps1
+SCRIPT:      Winget_upgrade_install_apps_fixed.ps1
 AUTHOR:      Chad Mark
 PLATFORM:    NinjaRMM
+REPOSITORY:  https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Winget_upgrade_install_apps_fixed.ps1
 CREATED:     03/20/2026
-UPDATED:     03/20/2026
+UPDATED:     03/21/2026
 
 DESCRIPTION:
     Installs, upgrades, or uninstalls a software package on a Windows machine
     using WinGet (Windows Package Manager). If WinGet is not installed, the
     script can optionally install it along with its dependencies. Must be run
-    as a local admin user — WinGet does NOT work under the SYSTEM account.
+    as a local admin user - WinGet does NOT work under the SYSTEM account.
 
 USAGE (NinjaRMM Script Variables):
-    action                      - Required. Install | Upgrade | Uninstall
-    packageId                   - Required. WinGet package ID (e.g. "Google.Chrome")
-                                  Find IDs at: https://winget.run or run: winget search <name>
-    scope                       - Optional. user | machine — sets install scope
-    locale                      - Optional. Locale for install (e.g. "en-US")
-    acceptPackageAgreements     - Checkbox. Auto-accept package license agreements
-    acceptSourceAgreements      - Checkbox. Auto-accept WinGet source agreements (required for Uninstall)
-    silent                      - Checkbox. Run installer silently with no UI
-    installWingetIfNecessary    - Checkbox. Install WinGet if it is not already present
+    action                   - Required. Install | Upgrade | Uninstall
+    packageId                - Required. WinGet package ID (e.g. "Google.Chrome")
+                               Find IDs at: https://winget.run or run: winget search <name>
+    scope                    - Optional. user | machine - sets install scope
+    locale                   - Optional. Locale for install (e.g. "en-US")
+    acceptPackageAgreements  - Checkbox. Auto-accept package license agreements
+    acceptSourceAgreements   - Checkbox. Auto-accept WinGet source agreements (required for Uninstall)
+    silent                   - Checkbox. Run installer silently with no UI
+    installWingetIfNecessary - Checkbox. Install WinGet if it is not already present
 
-IMPORTANT NOTES:
-    - Must run as LOCAL ADMIN — NOT as SYSTEM
+NOTES:
+    - Must run as LOCAL ADMIN - NOT as SYSTEM
     - In NinjaRMM use "Run As" with a local admin credential
       https://ninjarmm.zendesk.com/hc/en-us/articles/360016094532-Credential-Exchange
     - Minimum OS: Windows 10, Windows Server 2016
     - acceptSourceAgreements is required for Uninstall actions
-    - VCLibs dependency hash check is skipped during WinGet install — Microsoft
+    - VCLibs dependency hash check is skipped during WinGet install - Microsoft
       does not publish a hash for this file and it updates without notice
 
 CHANGE LOG:
     03/20/2026 - Initial version. Fixed VCLibs hardcoded hash issue; hash check
                  now skipped for VCLibs only since Microsoft provides no hash source
+    03/21/2026 - Added standard header block with repository link
 ===============================================================================
 #>
 
