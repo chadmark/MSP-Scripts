@@ -1,151 +1,59 @@
 #Requires -Version 5.1
 
 <#
-.SYNOPSIS
-    Manage Dell Command Update, including scanning for and installing updates.
-.DESCRIPTION
-    Manage Dell Command Update, including scanning for and installing updates.
+===============================================================================
+SCRIPT:      Manage Dell Command Updates.ps1
+AUTHOR:      Chad Mark
+PLATFORM:    NinjaRMM
+REPOSITORY:  https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Manage%20Dell%20Command%20Updates.ps1
+CREATED:     03/21/2026
+UPDATED:     03/21/2026
 
-.PARAMETER DestinationFolderPath
-    Enter the folder path to use for any output files. The folder will be created if it does not already exist. If the path cannot be created or no path is entered, $env:ProgramData\Dell\UpdateService will be used instead.
-.PARAMETER InstallDCUAndDotNet8IfNeeded
-    Install Dell Command Update and .NET 8 if they are not already installed on the system. .NET 8 is required for DCU.
-.PARAMETER SortUpdatesBy
-    When reporting on available updates, choose what to sort the list by. This applies to the activity feed output, WYSIWYG custom field, and multiline custom field.
-.PARAMETER WysiwygCustomFieldName
-    Enter the name of a WYSIWYG custom field to populate with the list of updates.
-.PARAMETER MultilineCustomFieldName
-    Enter the name of a multiline custom field to populate with the list of updates.
-.PARAMETER InstallAllUpdates
-    Install all available updates detected by Dell Command Update. If this option is used, all other 'Install' options will be ignored.
-.PARAMETER InstallUpdatesByPackageID
-    Specify the package IDs of the updates you want to install, separated by commas. If this option is used, all other 'Install' options will be ignored. The 'Install All Updates' option will override this option if both are used.
-.PARAMETER InstallUpdatesByCategory
-    Specify the category of updates you want to install. Only one category can be provided.
-.PARAMETER InstallUpdatesBySeverity
-    Specify the severity of updates you want to install. Only one severity can be provided. Valid options are: Recommended, Urgent, Optional.
-.PARAMETER InstallUpdatesByType
-    Specify the type of updates you want to install. Only one type can be provided. Valid options are: BIOS, Firmware, Driver, Application.
-.PARAMETER SuspendBitLockerAndRebootIfNeeded
-    If an update is installed that requires a reboot, use this switch to automatically suspend BitLocker on the OS drive and reboot the system.
+DESCRIPTION:
+    Manages Dell Command Update (DCU) on Dell systems. Scans for available
+    BIOS, firmware, driver, and application updates, reports them to NinjaRMM
+    custom fields, and optionally installs them. If DCU or .NET 8 are not
+    installed, the script can install them automatically.
 
-.EXAMPLE
-    -InstallDCUAndDotNet8IfNeeded -WysiwygCustomFieldName "DellUpdates" -MultilineCustomFieldName "DellUpdatesList"
+    Must be run as SYSTEM. Dell systems only.
 
-    [Info] All output files will be saved to the folder: 'C:\ProgramData\Dell\UpdateService'
-    [Info] Note that by default, this folder is only accessible by the SYSTEM account.
+USAGE (NinjaRMM Script Variables):
+    InstallDCUAndDotNet8IfNeeded      - Checkbox. Install DCU and .NET 8 Desktop
+                                        Runtime if not already present
+    InstallAllUpdates                 - Checkbox. Install all available updates.
+                                        Overrides all other Install options
+    SuspendBitLockerAndRebootIfNeeded - Checkbox. If a reboot is required after
+                                        an update, suspend BitLocker and reboot
 
-    [Info] Dell Command Update is not installed. Installing the latest version of Dell Command Update.
+    DestinationFolderPath             - Optional. Folder for output/log files.
+                                        Defaults to: C:\ProgramData\Dell\UpdateService
+    SortUpdatesBy                     - Optional. Sort update list by: Name | Type |
+                                        Category | ReleaseDate | Severity (default)
+    WysiwygCustomFieldName            - Optional. NinjaRMM WYSIWYG custom field to
+                                        populate with available updates list
+    MultilineCustomFieldName          - Optional. NinjaRMM multiline custom field to
+                                        populate with available updates list
+    InstallUpdatesByPackageID         - Optional. Comma-separated list of 5-char
+                                        package IDs to install (e.g. "G7K77,NJKY9")
+    InstallUpdatesByCategory          - Optional. Install updates by a single category
+                                        (e.g. "Security")
+    InstallUpdatesBySeverity          - Optional. Install updates by severity:
+                                        Recommended | Urgent | Optional
+    InstallUpdatesByType              - Optional. Install updates by type:
+                                        BIOS | Firmware | Driver | Application
 
-    [Info] Dell Command Update requires .NET Desktop Runtime 8 (64-bit), with version 8.0.8 or higher, but it is not installed.
-    [Info] The latest version of .NET Desktop Runtime 8 (64-bit) will be installed.
+NOTES:
+    - Must run as SYSTEM account
+    - Dell systems only - will exit with error on non-Dell hardware
+    - Minimum OS: Windows 10
+    - .NET 8 Desktop Runtime (64-bit) v8.0.8 or higher is required by DCU
+    - InstallAllUpdates overrides all other Install* parameters
+    - InstallUpdatesByPackageID overrides Category, Severity, and Type filters
+    - Find package IDs by running: dcu-cli.exe /scan in the DCU install folder
 
-    [Info] Downloading the .NET Desktop Runtime 8.0.23 installer to 'C:\ProgramData\Dell\CommandUpdate_Ninja\DotNetDesktop64BitInstaller.exe'.
-    [Info] Successfully verified the SHA512 hash of the .NET Desktop Runtime installer.
-    [Info] Successfully verified the digital signature of the .NET Desktop Runtime installer.
-    [Info] Starting the .NET Desktop Runtime 8.0.23 installer process.
-    [Info] Successfully installed .NET Desktop Runtime 8.0.23.
-
-    [Info] Downloading the Dell Command Update version 5.5.0 installer to 'C:\ProgramData\Dell\CommandUpdate_Ninja\DellCommandUpdateInstaller.exe'.
-    [Info] Successfully verified the SHA256 hash of the Dell Command Update installer.
-    [Info] Successfully verified the digital signature of the Dell Command Update installer.
-    [Info] Starting the Dell Command Update installer process.
-    [Info] Successfully installed Dell Command Update version 5.5.0.
-
-    [Info] Scanning for available updates.
-    [Info] Found 2 available updates for this system.
-
-    PackageID   : G7K77
-    Name        : Dell ControlVault3 Driver and Firmware
-    Type        : Driver
-    Category    : Security
-    Version     : 5.15.10.14
-    ReleaseDate : 3/7/2025
-    Severity    : Urgent
-    Status      : Not installed
-
-    PackageID   : NJKY9
-    Name        : Dell SupportAssist OS Recovery Plugin for Dell Update
-    Type        : Application
-    Category    : Application
-    Version     : 5.5.14.0
-    ReleaseDate : 7/24/2025
-    Severity    : Recommended
-    Status      : Not installed
-
-    [Info] Attempting to set the WYSIWYG custom field 'DellUpdates'.
-    [Info] Successfully set the WYSIWYG custom field 'DellUpdates'.
-
-    [Info] Attempting to set the multiline custom field 'DellUpdatesList'.
-    [Info] Successfully set the multiline custom field 'DellUpdatesList'.
-
-.EXAMPLE
-    -InstallAllUpdates -WysiwygCustomFieldName "DellUpdates" -MultilineCustomFieldName "DellUpdatesList"
-
-    [Info] All output files will be saved to the folder: 'C:\ProgramData\Dell\UpdateService'
-    [Info] Note that by default, this folder is only accessible by the SYSTEM account.
-
-    [Info] Scanning for available updates.
-    [Info] Found 2 available updates for this system.
-
-    PackageID   : G7K77
-    Name        : Dell ControlVault3 Driver and Firmware
-    Type        : Driver
-    Category    : Security
-    Version     : 5.15.10.14
-    ReleaseDate : 3/7/2025
-    Severity    : Urgent
-    Status      : Not installed
-
-    PackageID   : NJKY9
-    Name        : Dell SupportAssist OS Recovery Plugin for Dell Update
-    Type        : Application
-    Category    : Application
-    Version     : 5.5.14.0
-    ReleaseDate : 7/24/2025
-    Severity    : Recommended
-    Status      : Not installed
-
-    [Info] The following updates will be installed: Dell ControlVault3 Driver and Firmware, Dell SupportAssist OS Recovery Plugin for Dell Update.
-
-    [Info] Working on the 'Dell ControlVault3 Driver and Firmware' update.
-    [Info] Successfully verified the update's SHA256 hash.
-    [Info] Successfully verified the update's digital signature.
-    [Info] Installing the update.
-    [Info] Successfully installed the update.
-
-    [Info] The update 'Dell ControlVault3 Driver and Firmware' requires a reboot to complete the installation.
-
-    [Info] Working on the 'Dell SupportAssist OS Recovery Plugin for Dell Update' update.
-    [Info] Successfully verified the update's SHA256 hash.
-    [Info] Successfully verified the update's digital signature.
-    [Info] Installing the update.
-    [Info] Successfully installed the update.
-
-    [Info] Finished installing updates.
-
-    [Info] 2 update(s) installed successfully. 0 update(s) failed to install. There are now 0 available update(s) for this system.
-
-    [Info] These updates were installed successfully:
-    - Dell ControlVault3 Driver and Firmware
-    - Dell SupportAssist OS Recovery Plugin for Dell Update
-
-    [Info] Attempting to set the WYSIWYG custom field 'DellUpdates'.
-    [Info] Successfully set the WYSIWYG custom field 'DellUpdates'.
-
-    [Info] Attempting to set the multiline custom field 'DellUpdatesList'.
-    [Info] Successfully set the multiline custom field 'DellUpdatesList'.
-
-    [Warning] A reboot is required to complete the installation of some updates, but the 'Suspend BitLocker and Reboot If Needed' option was not selected. Please reboot the system manually to complete the update process.
-
-.NOTES
-    Minimum OS Architecture Supported: Windows 10
-    Version: 1.1
-    Release Notes:
-        - Fixed issue with determining update success for certain BIOS updates.
-        - Added file hash and signature verification for all downloaded files.
-        - Changed restart option to suspend BitLocker if detected and renamed the parameter accordingly.
-        - Changed installation of .NET Desktop Runtime 8 to find and install the latest 64-bit version instead of a hardcoded version.
+CHANGE LOG:
+    03/21/2026 - Added standard header block with repository link
+===============================================================================
 #>
 
 [CmdletBinding()]
