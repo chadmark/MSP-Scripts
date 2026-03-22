@@ -5,7 +5,7 @@
 SCRIPT:      Manage Dell Command Updates.ps1
 AUTHOR:      Chad Mark
 PLATFORM:    NinjaRMM
-REPOSITORY:  https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Manage%20Dell%20Command%20Updates.ps1
+REPOSITORY:  https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Manage_Dell_Command_Updates.ps1
 CREATED:     03/21/2026
 UPDATED:     03/21/2026
 
@@ -56,6 +56,10 @@ CHANGE LOG:
     03/21/2026 - Added Dell Client Management Service check: ensures service is
                  set to Automatic and running before proceeding; starts it if
                  stopped/disabled and waits 15 seconds for initialization
+    03/21/2026 - Removed hardcoded DCU version 5.5.0 fallback; replaced with
+                 Get-LatestDCUFromCatalog which dynamically scans Dell's SKU
+                 catalogs to find the true latest version — no more stale URLs
+                 or hashes baked into the script
 ===============================================================================
 #>
 
@@ -722,6 +726,101 @@ begin {
         }
     }
 
+    function Get-LatestDCUFromCatalog {
+        [CmdletBinding()]
+        param (
+            [Parameter(Mandatory = $True)]
+            [string]$DestinationFolder
+        )
+
+        if ([string]::IsNullOrWhiteSpace($DestinationFolder)) {
+            throw [System.ArgumentException]::New("A valid DestinationFolder is required.")
+        }
+
+        Write-Host -Object "[Info] Scanning Dell catalogs to find the latest Dell Command Update version available."
+
+        # Re-use SupportedModels if already in memory from earlier in the script
+        if (-not $SupportedModels) {
+            try {
+                $SupportedModels = Get-DellSupportedModels -DestinationFolder $DestinationFolder -ErrorAction Stop
+            }
+            catch { throw $_ }
+        }
+
+        if (-not $SupportedModels) {
+            throw [System.Exception]::New("Unable to retrieve the list of supported Dell models.")
+        }
+
+        $BestDCUEntry   = $null
+        $BestDCUVersion = [version]"0.0.0"
+        $CatalogsChecked = 0
+        $ModelCabPath   = "$DestinationFolder\DCUScan_Model.cab"
+        $ModelXmlPath   = "$DestinationFolder\DCUScan_Model.xml"
+
+        foreach ($Model in $SupportedModels) {
+            # After finding a DCU entry, check at least 10 more catalogs to confirm we have the highest version, then stop
+            if ($BestDCUEntry -and $CatalogsChecked -ge 10) { break }
+            # Hard cap to avoid excessive runtime on edge cases
+            if ($CatalogsChecked -ge 75) { break }
+
+            try {
+                Invoke-Download -URL "https://downloads.dell.com/$($Model.URL)" -Path $ModelCabPath -Attempts 1 -SkipSleep -Overwrite -Quiet -ErrorAction Stop | Out-Null
+            }
+            catch { $CatalogsChecked++; continue }
+
+            try {
+                Invoke-LegacyConsoleTool -FilePath "expand" -ArgumentList "`"$ModelCabPath`" `"$ModelXmlPath`"" -ErrorAction Stop | Out-Null
+            }
+            catch { $CatalogsChecked++; continue }
+
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $ModelXmlPath -ErrorAction SilentlyContinue)) {
+                $CatalogsChecked++
+                continue
+            }
+
+            try { [xml]$ModelXml = Get-Content -Path $ModelXmlPath -ErrorAction Stop }
+            catch { $CatalogsChecked++; continue }
+
+            $DCUEntries = $ModelXml.Manifest.SoftwareComponent | Where-Object {
+                $_.Name.Display."#cdata-section" -match "Command.+Windows Universal"
+            }
+
+            foreach ($Entry in $DCUEntries) {
+                try {
+                    $EntryVersion = [version]$Entry.VendorVersion
+                    if ($EntryVersion -gt $BestDCUVersion) {
+                        $BestDCUVersion = $EntryVersion
+                        $BaseURL = $ModelXml.Manifest.baseLocation
+                        $BestDCUEntry = [PSCustomObject]@{
+                            VendorVersion      = $Entry.VendorVersion
+                            DownloadURL        = "https://$BaseURL/$($Entry.path)"
+                            DownloadHashSha256 = ($Entry.Cryptography.Hash | Where-Object { $_.algorithm -eq "SHA256" })."#text"
+                            DownloadHashSha1   = ($Entry.Cryptography.Hash | Where-Object { $_.algorithm -eq "SHA1" })."#text"
+                            DownloadHashMD5    = ($Entry.Cryptography.Hash | Where-Object { $_.algorithm -eq "MD5" })."#text"
+                        }
+                    }
+                }
+                catch { continue }
+            }
+
+            $CatalogsChecked++
+        }
+
+        # Clean up temp files
+        foreach ($TempFile in @($ModelCabPath, $ModelXmlPath)) {
+            if (Test-Path $TempFile -ErrorAction SilentlyContinue) {
+                Remove-Item -Path $TempFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        if (-not $BestDCUEntry) {
+            throw [System.Exception]::New("Dell Command Update was not found in any of the $CatalogsChecked catalogs checked.")
+        }
+
+        Write-Host -Object "[Info] Found Dell Command Update version $($BestDCUEntry.VendorVersion) as the latest available."
+        return $BestDCUEntry
+    }
+
     function Test-IsSystem {
         [CmdletBinding()]
         param ()
@@ -1000,9 +1099,9 @@ process {
             $LatestDellCommandUpdate = Get-DellAvailableUpdates -SystemSKU $ComputerSKU -DestinationFolder $DestinationFolderPath -Method "CatalogDownload" -Latest -ErrorAction Stop | Where-Object { $_.Name -match "Command.+Windows Universal" }
         }
         catch {
-            Write-Host -Object "[Warning] Failed to retrieve the latest Dell Command Update download URL for SKU '$ComputerSKU'."
+            Write-Host -Object "[Warning] Failed to retrieve Dell Command Update download URL from SKU '$ComputerSKU' catalog."
             Write-Host -Object "[Warning] $($_.Exception.Message)"
-            Write-Host -Object "[Warning] The script will fallback to a hardcoded download URL for version 5.5.0.`n"
+            Write-Host -Object "[Warning] Will attempt to find the latest version by scanning other Dell catalogs.`n"
             $PrintedDCUDownloadURLWarning = $True
         }
 
@@ -1014,11 +1113,22 @@ process {
 
         if ([string]::IsNullOrWhiteSpace($DellCommandUpdateDownloadURL)) {
             if (-not $PrintedDCUDownloadURLWarning) {
-                Write-Host -Object "[Warning] Failed to retrieve latest DCU URL. Falling back to version 5.5.0.`n"
+                Write-Host -Object "[Warning] Dell Command Update was not found in the SKU '$ComputerSKU' catalog."
+                Write-Host -Object "[Warning] Scanning other Dell catalogs to find the latest available version.`n"
             }
-            $DellCommandUpdateDownloadURL = "https://dl.dell.com/FOLDER13309588M/2/Dell-Command-Update-Windows-Universal-Application_C8JXV_WIN64_5.5.0_A00_01.EXE"
-            $ExpectedDCUSha256Hash = "017D24D38D758FE1D585EA895BB285FAD4488AAF95E2BE343BFB88E6B3345CB3"
-            $DellCommandUpdateVersion = "5.5.0"
+            try {
+                $FallbackDCU = Get-LatestDCUFromCatalog -DestinationFolder $DestinationFolderPath -ErrorAction Stop
+                $DellCommandUpdateDownloadURL = $FallbackDCU.DownloadURL
+                $ExpectedDCUSha256Hash        = $FallbackDCU.DownloadHashSha256
+                $ExpectedDCUSha1Hash          = $FallbackDCU.DownloadHashSha1
+                $ExpectedDCUMd5Hash           = $FallbackDCU.DownloadHashMD5
+                $DellCommandUpdateVersion     = $FallbackDCU.VendorVersion
+            }
+            catch {
+                Write-Host -Object "[Error] Failed to find Dell Command Update via catalog scan."
+                Write-Host -Object "[Error] $($_.Exception.Message)"
+                exit 1
+            }
         }
 
         $DellCommandUpdateInstallerFilePath = "$DestinationFolderPath\DellCommandUpdateInstaller.exe"
