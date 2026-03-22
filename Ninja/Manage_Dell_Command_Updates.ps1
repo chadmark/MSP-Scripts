@@ -55,7 +55,10 @@ CHANGE LOG:
     03/21/2026 - Added standard header block with repository link
     03/21/2026 - Added Dell Client Management Service check: ensures service is
                  set to Automatic and running before proceeding; starts it if
-                 stopped/disabled and waits 15 seconds for initialization
+                 stopped/disabled and waits 15 seconds for initialization;
+                 also waits 15 seconds when service is already running to allow
+                 DCU application to fully initialize before CLI commands are run
+                 (fixes exit code 3005 - application initializing error)
     03/21/2026 - Removed hardcoded DCU version 5.5.0 fallback; replaced with
                  Get-LatestDCUFromCatalog which dynamically scans Dell's SKU
                  catalogs to find the true latest version — no more stale URLs
@@ -964,7 +967,8 @@ process {
             }
         }
         else {
-            Write-Host -Object "[Info] '$DCUServiceName' is already running."
+            Write-Host -Object "[Info] '$DCUServiceName' is already running. Waiting 15 seconds for full initialization."
+            Start-Sleep -Seconds 15
         }
     }
     #endregion
