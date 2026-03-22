@@ -905,10 +905,13 @@ process {
 
     $ComputerSKU = $ComputerSystem.SystemSKUNumber
 
-    if ($ComputerSKU -notin $SupportedModels.SKU) {
-        Write-Host -Object "[Error] The computer's SKU of '$ComputerSKU' is not supported by Dell Command Update."
-        exit 1
-    }
+   if ($ComputerSKU -notmatch "^[0-9A-F]{4}$") {
+    Write-Host -Object "[Warning] '$ComputerSKU' does not appear to be a standard Dell SKU. Skipping SKU validation and proceeding."
+}
+elseif ($ComputerSKU -notin $SupportedModels.SKU) {
+    Write-Host -Object "[Error] The computer's SKU of '$ComputerSKU' is not supported by Dell Command Update."
+    exit 1
+}
     #endregion
 
     Write-Host -Object "[Info] All output files will be saved to the folder: '$DestinationFolderPath'"
