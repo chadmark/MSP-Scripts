@@ -1,21 +1,29 @@
-#< 
+<# 
 Last edit 03/23/2026 Chad
 NinjaOne: BitLocker status + recovery key -> custom field
 
 What it does:
 - Runs in 64-bit PowerShell (important in RMM contexts)
 - Requires admin
-- Checks OS drive BitLocker protection status
-  - If protected: ensures RecoveryPassword protector exists, backs up to AD DS, then writes RecoveryPassword to Ninja field
-  - If not protected: adds RecoveryPassword protector first (required by GPO before Enable-BitLocker),
-    enables BitLocker using TPM if available (else RecoveryPassword as sole protector),
-    backs up recovery key to AD DS, then writes key to Ninja field
+- Checks OS drive BitLocker protection status AND VolumeStatus to detect in-progress encryption
+  - If fully protected OR already encrypting/encrypted with a key: skips encryption entirely,
+    backs up existing key to AD DS, writes key to Ninja field
+  - If not protected and no prior encryption: adds RecoveryPassword protector first (required by GPO
+    before Enable-BitLocker), enables BitLocker using TPM if available (else RecoveryPassword as sole
+    protector), backs up recovery key to AD DS, then writes key to Ninja field
 
 Notes:
 - Uses XtsAes256 + UsedSpaceOnly (fast rollout + strong crypto)
 - Uses -SkipHardwareTest for unattended enablement
 - Recovery Password protector must exist BEFORE Enable-BitLocker when GPO enforces
   "Do not enable BitLocker until recovery information is stored to AD DS" (0x8031002C fix)
+- VolumeStatus check prevents 0x80310031 ("only one key protector of this type allowed") when
+  a previous run partially succeeded and a Recovery Password protector already exists
+- VolumeStatus check (combined with key protector check using -and) prevents 0x80310031
+  ("only one key protector of this type allowed") when a previous run partially succeeded.
+  Both conditions must be true to skip encryption: drive must be non-FullyDecrypted AND a
+  Recovery Password protector must already exist. Using -or caused orphaned protectors on a
+  FullyDecrypted drive to incorrectly skip encryption.
 #>
 
 #region Force 64-bit PowerShell (important in RMM contexts)
@@ -109,11 +117,37 @@ try {
     $blv         = Get-BitLockerVolume -MountPoint $mountPoint -ErrorAction Stop
     $isProtected = ($blv.ProtectionStatus -eq 'On')
 
+    # *** CHANGED: inspect VolumeStatus in addition to ProtectionStatus ***
+    # VolumeStatus can be FullyEncrypted/EncryptionInProgress/DecryptionInProgress even when
+    # ProtectionStatus=Off (e.g. protection suspended, or a prior script run partially succeeded).
+    # A Recovery Password protector may already exist in these states; attempting to add another
+    # throws 0x80310031 ("only one key protector of this type is allowed").
+    $volumeStatus       = $blv.VolumeStatus   # FullyDecrypted | FullyEncrypted | EncryptionInProgress | etc.
+    $hasRecoveryPassword = $null -ne (
+        $blv.KeyProtector | Where-Object { $_.KeyProtectorType -eq 'RecoveryPassword' -and $_.RecoveryPassword }
+    )
+
+    $alreadyEncrypting = ($volumeStatus -ne 'FullyDecrypted') -and $hasRecoveryPassword
+    # *** END CHANGED ***
+
     if ($isProtected) {
         Write-Host "BitLocker is already enabled (ProtectionStatus=On) on $mountPoint."
         Ensure-RecoveryPasswordProtector -MountPoint $mountPoint
         Backup-RecoveryPasswordToAD      -MountPoint $mountPoint
     }
+    # *** CHANGED: new elseif catches partially-encrypted / suspended state ***
+    elseif ($alreadyEncrypting) {
+        Write-Host "BitLocker encryption is already underway or a key protector exists (VolumeStatus=$volumeStatus). Skipping encryption."
+        Write-Host "Ensuring Recovery Password protector and backing up to AD DS..."
+
+        # If protection is suspended, resume it
+        try { Resume-BitLocker -MountPoint $mountPoint -ErrorAction Stop | Out-Null } catch { }
+
+        # Ensure a Recovery Password protector exists without adding a duplicate
+        Ensure-RecoveryPasswordProtector -MountPoint $mountPoint
+        Backup-RecoveryPasswordToAD      -MountPoint $mountPoint
+    }
+    # *** END CHANGED ***
     else {
         Write-Host "BitLocker is NOT enabled (ProtectionStatus=Off) on $mountPoint. Enabling now..."
 
@@ -140,12 +174,12 @@ try {
             Write-Host "TPM not usable. Enabling BitLocker using Recovery Password protector..."
             # Recovery Password protector already added above; pass it as the enablement protector
             $enableParams = @{
-                MountPoint               = $mountPoint
-                UsedSpaceOnly            = $true
-                EncryptionMethod         = 'XtsAes256'
+                MountPoint                = $mountPoint
+                UsedSpaceOnly             = $true
+                EncryptionMethod          = 'XtsAes256'
                 RecoveryPasswordProtector = $true
-                SkipHardwareTest         = $true
-                ErrorAction              = 'Stop'
+                SkipHardwareTest          = $true
+                ErrorAction               = 'Stop'
             }
             Enable-BitLocker @enableParams | Out-Null
         }
