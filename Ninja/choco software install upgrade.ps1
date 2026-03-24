@@ -5,8 +5,9 @@
 SCRIPT:      choco software install upgrade.ps1
 AUTHOR:      Chad Mark
 PLATFORM:    NinjaRMM
+REPOSITORY:  https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/choco%20software%20install%20upgrade.ps1
 CREATED:     01/14/2026
-UPDATED:     03/20/2026
+UPDATED:     03/21/2026
 
 DESCRIPTION:
     Installs, upgrades, or uninstalls a software package on a Windows machine
@@ -15,16 +16,16 @@ DESCRIPTION:
     itself before performing the package action.
 
 USAGE (NinjaRMM Script Variables):
-    action                      - Required. Install | Upgrade | Uninstall
-    packageName                 - Required. Chocolatey package name (e.g. "vlc", "googlechrome")
-                                  Find packages at: https://community.chocolatey.org/packages
-    version                     - Optional. Specific version to install (e.g. "3.0.18")
-    allowDowngrades             - Checkbox. Allow downgrading to an older version (requires version)
+    action                       - Required. Install | Upgrade | Uninstall
+    packageName                  - Required. Chocolatey package name (e.g. "vlc", "googlechrome")
+                                   Find packages at: https://community.chocolatey.org/packages
+    version                      - Optional. Specific version to install (e.g. "3.0.18")
+    allowDowngrades              - Checkbox. Allow downgrading to an older version (requires version)
     installChocolateyIfNecessary - Checkbox. Install Chocolatey if it is not already present
-    upgradeChocolatey           - Checkbox. Upgrade Chocolatey itself before running the action
-    skipSleep                   - Checkbox. Skip the random wait (1-15 min) used to avoid rate limiting
-    ignoreChecksums             - Checkbox. Bypass checksum verification (use when a package
-                                  checksum is outdated but the package is otherwise trusted)
+    upgradeChocolatey            - Checkbox. Upgrade Chocolatey itself before running the action
+    skipSleep                    - Checkbox. Skip the random wait (1-15 min) used to avoid rate limiting
+    ignoreChecksums              - Checkbox. Bypass checksum verification (use when a package
+                                   checksum is outdated but the package is otherwise trusted)
 
 NOTES:
     - Must run as LOCAL ADMIN or SYSTEM
@@ -35,6 +36,7 @@ NOTES:
 CHANGE LOG:
     01/14/2026 - Initial version added by Chad
     03/20/2026 - Added ignoreChecksums variable option; fixed $env:$env: typo in param block
+    03/21/2026 - Added standard header block with repository link
 ===============================================================================
 #>
 
