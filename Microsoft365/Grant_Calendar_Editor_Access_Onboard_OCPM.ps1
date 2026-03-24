@@ -29,7 +29,7 @@ $CalendarOwners = @(
     "israel@ocmgmt.com",
     "alberto@ocmgmt.com",
     "andrew@ocmgmt.com",
-    "padrics@ocmgmt.com"
+    "padric@ocmgmt.com"
 )
 
 do {
