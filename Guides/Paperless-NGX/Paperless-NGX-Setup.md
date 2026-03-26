@@ -5,7 +5,7 @@
 **GitHub:** https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Paperless-NGX-Setup.md  
 **Environment:** Ubuntu VM, Docker, Windows Network with Active Directory  
 **Last Updated:** 2026-03-26  
-**Version:** 1.0
+**Version:** 1.1
 
 ---
 
@@ -89,6 +89,12 @@ sudo chown -R $(id -u):$(id -g) /opt/paperless /opt/paperless-ai
 | `/opt/paperless-ai/data` | Paperless-AI app data |
 
 > **Important:** The consume directory is an inbox, not storage. Paperless deletes files from it after successful ingestion. Always keep your source copies elsewhere before importing.
+
+After creating directories, set open permissions on the consume folder so AD users and the container can both read/write:
+
+```bash
+sudo chmod 1777 /opt/paperless/consume
+```
 
 ---
 
@@ -197,6 +203,7 @@ services:
       PAPERLESS_CONSUMER_POLLING: 60
       PAPERLESS_CONSUMER_RECURSIVE: 1
       PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS: 1
+      PAPERLESS_UMASK: 0002
 
       PAPERLESS_TIKA_ENABLED: 1
       PAPERLESS_TIKA_ENDPOINT: http://tika:9998
@@ -241,6 +248,7 @@ networks:
 | `PAPERLESS_CONSUMER_POLLING` | How often (seconds) to check consume folder for new files |
 | `PAPERLESS_CONSUMER_RECURSIVE` | Enables watching subdirectories inside consume |
 | `PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS` | Automatically applies subfolder name as a tag to ingested documents |
+| `PAPERLESS_UMASK` | Ensures files created by the container are group-writable — prevents permission errors with AD-created subdirectories |
 | `PAPERLESS_TIKA_ENABLED` | Enables Tika for complex file format support |
 
 ---
@@ -746,6 +754,34 @@ nslookup your.domain.net
 
 ---
 
+### Permission denied error on consume subdirectories
+
+**Symptom:** `[Errno 13] Permission denied: '/usr/src/paperless/consume/SUBFOLDER/filename.pdf'`
+
+**Cause:** When Windows/AD users create subdirectories via SMB they are owned by their winbind UID (e.g., `10001`). The Paperless container runs as UID `1000` and can read files but cannot delete them from directories it doesn't own.
+
+**Immediate fix — reset permissions recursively:**
+```bash
+sudo chmod -R 1777 /opt/paperless/consume
+```
+
+**Permanent fix — add PAPERLESS_UMASK to compose file:**
+
+In the paperless environment section:
+```yaml
+PAPERLESS_UMASK: 0002
+```
+
+Then apply:
+```bash
+cd ~/paperless
+docker compose up -d
+```
+
+> The `chmod -R 1777` handles existing subdirectories. `PAPERLESS_UMASK: 0002` ensures future directories created by the container are group-writable going forward.
+
+---
+
 ### Checking Logs
 
 ```bash
@@ -803,8 +839,8 @@ docker exec paperless env | grep -i consumer
 ls -la /opt/paperless/
 stat /opt/paperless/consume | grep Access
 
-# Fix consume directory permissions
-sudo chmod 1777 /opt/paperless/consume
+# Fix consume directory permissions (recursive — covers all subdirectories)
+sudo chmod -R 1777 /opt/paperless/consume
 
 # Fix ownership
 sudo chown -R 1000:1000 /opt/paperless

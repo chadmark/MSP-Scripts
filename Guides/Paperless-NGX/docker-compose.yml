@@ -1,0 +1,129 @@
+# Paperless-NGX Complete Stack
+# Author      : Chad Mark
+# GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Paperless-NGX/docker-compose.yml
+# Last Edit   : 2026-03-26
+# Version     : 1.0
+#
+# BEFORE DEPLOYING:
+#   1. Generate secrets:
+#        openssl rand -hex 32       → PAPERLESS_SECRET_KEY
+#        openssl rand -base64 24    → POSTGRES_PASSWORD and PAPERLESS_DBPASS (must match)
+#   2. Replace all YOUR_* placeholders below
+#   3. Verify your UID/GID with: id
+#   4. Create directories:
+#        sudo mkdir -p /opt/paperless/{postgres,redis,data,media,consume,export}
+#        sudo mkdir -p /opt/paperless-ai/data
+#        sudo chown -R $(id -u):$(id -g) /opt/paperless /opt/paperless-ai
+#        sudo chmod 1777 /opt/paperless/consume
+#
+# FULL SETUP GUIDE:
+#   https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Paperless-NGX-Setup.md
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: paperless-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: YOUR_GENERATED_POSTGRES_PASSWORD
+      TZ: America/Los_Angeles
+    volumes:
+      - /opt/paperless/postgres:/var/lib/postgresql/data
+    networks:
+      - paperless_net
+
+  redis:
+    image: redis:7
+    container_name: paperless-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - /opt/paperless/redis:/data
+    networks:
+      - paperless_net
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: paperless-gotenberg
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --chromium-disable-javascript=true
+      - --chromium-allow-list=file:///tmp/.*
+    networks:
+      - paperless_net
+
+  tika:
+    image: apache/tika:latest
+    container_name: paperless-tika
+    restart: unless-stopped
+    networks:
+      - paperless_net
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: paperless
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - gotenberg
+      - tika
+    ports:
+      - "8000:8000"
+    environment:
+      USERMAP_UID: 1000                   # verify with: id -u
+      USERMAP_GID: 1000                   # verify with: id -g
+      TZ: America/Los_Angeles
+
+      PAPERLESS_REDIS: redis://redis:6379
+      PAPERLESS_DBHOST: postgres
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: YOUR_GENERATED_POSTGRES_PASSWORD
+
+      PAPERLESS_URL: http://YOUR_VM_IP:8000
+      PAPERLESS_SECRET_KEY: YOUR_GENERATED_SECRET_KEY
+
+      PAPERLESS_TIME_ZONE: America/Los_Angeles
+      PAPERLESS_OCR_LANGUAGE: eng
+      PAPERLESS_CONSUMER_POLLING: 60
+      PAPERLESS_CONSUMER_RECURSIVE: 1
+      PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS: 1
+      PAPERLESS_UMASK: 0002
+
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+
+      PAPERLESS_CONSUMPTION_DIR: /usr/src/paperless/consume
+    volumes:
+      - /opt/paperless/data:/usr/src/paperless/data
+      - /opt/paperless/media:/usr/src/paperless/media
+      - /opt/paperless/consume:/usr/src/paperless/consume
+      - /opt/paperless/export:/usr/src/paperless/export
+    networks:
+      - paperless_net
+
+  paperless-ai:
+    image: clusterzx/paperless-ai:latest
+    container_name: paperless-ai
+    restart: unless-stopped
+    depends_on:
+      - paperless
+    ports:
+      - "8001:3000"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: America/Los_Angeles
+    volumes:
+      - /opt/paperless-ai/data:/app/data
+    networks:
+      - paperless_net
+
+networks:
+  paperless_net:
+    driver: bridge
