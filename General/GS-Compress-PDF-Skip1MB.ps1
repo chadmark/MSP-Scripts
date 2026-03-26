@@ -67,7 +67,7 @@ $MinFileSize = 1MB
 $PDFSettings = '/ebook'
 
 # PDF compatibility level. 1.4 is broadly compatible with all modern viewers.
-$CompatibilityLevel = '1.4'
+# Hardcoded as a constant — change directly in the gswin64c call below if needed.
 
 # ---------------------------------------------------------------------------
 # Main
@@ -86,8 +86,8 @@ Get-ChildItem -Path . -Filter *.pdf -Recurse | ForEach-Object {
 
     gswin64c `
       -sDEVICE=pdfwrite `
-      -dCompatibilityLevel=$CompatibilityLevel `
-      -dPDFSETTINGS=$PDFSettings `
+      -dCompatibilityLevel=1.4 `
+      "-dPDFSETTINGS=$PDFSettings" `
       -dNOPAUSE `
       -dQUIET `
       -dBATCH `
