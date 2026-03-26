@@ -5,7 +5,7 @@
 **GitHub:** https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Paperless-NGX-Setup.md  
 **Environment:** Ubuntu VM, Docker, Windows Network with Active Directory  
 **Last Updated:** 2026-03-26  
-**Version:** 1.1
+**Version:** 1.2
 
 ---
 
@@ -95,6 +95,22 @@ After creating directories, set open permissions on the consume folder so AD use
 ```bash
 sudo chmod 1777 /opt/paperless/consume
 ```
+
+### Automated Permission Fix (Required for AD/SMB)
+
+When Windows/AD users create subdirectories via SMB they come in with restrictive permissions that prevent the Paperless container from cleaning up after ingestion. Set up a cron job to automatically fix this every minute:
+
+```bash
+sudo crontab -e
+```
+
+Add this line:
+
+```bash
+* * * * * chmod -R 1777 /opt/paperless/consume
+```
+
+This ensures any new subdirectory created from Windows is immediately writable by the container regardless of how deep the folder structure gets.
 
 ---
 
@@ -765,20 +781,22 @@ nslookup your.domain.net
 sudo chmod -R 1777 /opt/paperless/consume
 ```
 
-**Permanent fix — add PAPERLESS_UMASK to compose file:**
+**Permanent fix — cron job (recommended):**
 
-In the paperless environment section:
-```yaml
-PAPERLESS_UMASK: 0002
-```
+`PAPERLESS_UMASK: 0002` helps with container-created directories but doesn't cover directories created by Windows/AD users via SMB. A cron job is the most reliable solution:
 
-Then apply:
 ```bash
-cd ~/paperless
-docker compose up -d
+sudo crontab -e
 ```
 
-> The `chmod -R 1777` handles existing subdirectories. `PAPERLESS_UMASK: 0002` ensures future directories created by the container are group-writable going forward.
+Add:
+```bash
+* * * * * chmod -R 1777 /opt/paperless/consume
+```
+
+This runs every minute as root and ensures any new subdirectory created from Windows is immediately writable by the container — regardless of folder depth or who created it.
+
+> If you followed the Directory Structure section, this cron job is already in place. Run the immediate fix above for any existing subdirectories that were created before the cron job was added.
 
 ---
 
@@ -841,6 +859,10 @@ stat /opt/paperless/consume | grep Access
 
 # Fix consume directory permissions (recursive — covers all subdirectories)
 sudo chmod -R 1777 /opt/paperless/consume
+
+# Add automated permission fix via cron (run once during setup)
+# Adds: * * * * * chmod -R 1777 /opt/paperless/consume
+sudo crontab -e
 
 # Fix ownership
 sudo chown -R 1000:1000 /opt/paperless
