@@ -1,29 +1,27 @@
-<# 
-Last edit 03/23/2026 Chad
-NinjaOne: BitLocker status + recovery key -> custom field
+<#
+.SYNOPSIS
+    Enables BitLocker on the OS drive, backs up the recovery key to AD DS, and writes it to a NinjaOne custom field.
 
-What it does:
-- Runs in 64-bit PowerShell (important in RMM contexts)
-- Requires admin
-- Checks OS drive BitLocker protection status AND VolumeStatus to detect in-progress encryption
-  - If fully protected OR already encrypting/encrypted with a key: skips encryption entirely,
-    backs up existing key to AD DS, writes key to Ninja field
-  - If not protected and no prior encryption: adds RecoveryPassword protector first (required by GPO
-    before Enable-BitLocker), enables BitLocker using TPM if available (else RecoveryPassword as sole
-    protector), backs up recovery key to AD DS, then writes key to Ninja field
+.DESCRIPTION
+    Runs in 64-bit PowerShell (self-relaunches if needed) and requires elevation.
+    Checks ProtectionStatus and VolumeStatus to determine the drive state before acting:
+      - Fully protected: skips encryption, ensures key protector, backs up to AD DS, writes to Ninja.
+      - Partially encrypted / suspended (VolumeStatus != FullyDecrypted + recovery protector exists):
+        resumes BitLocker, ensures key protector, backs up to AD DS, writes to Ninja.
+      - Not protected: adds RecoveryPassword protector first (required by GPO before Enable-BitLocker),
+        enables with TPM if available (else RecoveryPassword only), backs up to AD DS, writes to Ninja.
+    Uses XtsAes256 + UsedSpaceOnly for fast rollout with strong encryption.
 
-Notes:
-- Uses XtsAes256 + UsedSpaceOnly (fast rollout + strong crypto)
-- Uses -SkipHardwareTest for unattended enablement
-- Recovery Password protector must exist BEFORE Enable-BitLocker when GPO enforces
-  "Do not enable BitLocker until recovery information is stored to AD DS" (0x8031002C fix)
-- VolumeStatus check prevents 0x80310031 ("only one key protector of this type allowed") when
-  a previous run partially succeeded and a Recovery Password protector already exists
-- VolumeStatus check (combined with key protector check using -and) prevents 0x80310031
-  ("only one key protector of this type allowed") when a previous run partially succeeded.
-  Both conditions must be true to skip encryption: drive must be non-FullyDecrypted AND a
-  Recovery Password protector must already exist. Using -or caused orphaned protectors on a
-  FullyDecrypted drive to incorrectly skip encryption.
+.NOTES
+    Author      : Chad
+    Last Edit   : 03/23/2026
+    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_Enablebitlocker_WritetoCustomFieldAndAD.ps1
+    Environment : NinjaOne RMM (script runner), domain-joined Windows endpoints
+    Requires    : Administrator, BitLocker feature, AD DS (for key backup), Ninja-Property-Set cmdlet
+    Version     : 1.0
+
+.LINK
+    https://github.com/chadmark/MSP-Scripts
 #>
 
 #region Force 64-bit PowerShell (important in RMM contexts)
