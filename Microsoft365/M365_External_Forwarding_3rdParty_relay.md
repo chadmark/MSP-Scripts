@@ -2,7 +2,7 @@
   Title       : M365 External Email Forwarding with Third-Party Outbound Mail Service
   Author      : Chad
   Last Edit   : 2026-04-06
-  GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Microsoft365/M365_External_Forwarding_Sophos.md
+  GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Microsoft365/M365_External_Forwarding_3rdParty_relay.md
   Environment : Microsoft 365 / Exchange Online
   Requires    : Exchange Online PowerShell Module
   Version     : 1.0
