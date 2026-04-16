@@ -15,16 +15,17 @@
     Currently excluded:
       - Synology.ActiveBackupForBusinessAgent
       - Synology.DriveClient
+      - SonicWall.NetExtender
 
 .NOTES
     Author          : Chad
     Original Author : Eric Kobelski
     Original Link   : https://github.com/ekobelski/ninja-scripts/tree/main/winget
-    Last Edit       : 04/02/2026
+    Last Edit       : 04-15-2026
     GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_Winget_UpdateAll_Exclude.ps1
     Environment     : NinjaOne RMM (SYSTEM context), Windows endpoints
     Requires        : winget (installed automatically if missing), Administrator / SYSTEM
-    Version         : 1.0
+    Version         : 1.1
 
 .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -37,6 +38,7 @@ $ErrorActionPreference = "Stop"
 $ExcludedPackages = @(
     'Synology.ActiveBackupForBusinessAgent'
     'Synology.DriveClient'
+    'SonicWall.NetExtender'
 )
 
 function Log([string]$m) {
