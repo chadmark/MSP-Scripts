@@ -15,7 +15,7 @@
     GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.2
+    Version:         1.3
   .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -115,7 +115,7 @@ function Install-DellCommandUpdate {
     # Download and extract the master catalog index
     Write-Output 'Downloading Dell catalog index...'
     Invoke-WebRequest -Uri 'https://downloads.dell.com/catalog/CatalogIndexPC.cab' -OutFile $IndexCabPath -UseBasicParsing
-    Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$IndexCabPath`" `"$IndexXmlPath`""
+    Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$IndexCabPath`" `"$IndexXmlPath`"" -RedirectStandardOutput 'NUL'
     if (-not (Test-Path $IndexXmlPath)) { throw 'Failed to extract CatalogIndexPC.xml.' }
 
     [xml]$IndexXml    = Get-Content -Path $IndexXmlPath
@@ -134,7 +134,7 @@ function Install-DellCommandUpdate {
 
       try {
         Invoke-WebRequest -Uri $ModelURL -OutFile $ModelCabPath -UseBasicParsing -ErrorAction Stop
-        Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$ModelCabPath`" `"$ModelXmlPath`""
+        Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$ModelCabPath`" `"$ModelXmlPath`"" -RedirectStandardOutput 'NUL'
         if (-not (Test-Path $ModelXmlPath)) { $CatalogsChecked++; continue }
 
         [xml]$ModelXml = Get-Content -Path $ModelXmlPath -ErrorAction Stop
@@ -368,4 +368,4 @@ if ($Reboot) {
   Write-Warning 'Reboot specified - rebooting in 60 seconds...'
   Start-Process -Wait -NoNewWindow -FilePath 'shutdown.exe' -ArgumentList '/r /f /t 60 /c "This system will restart in 60 seconds to install driver and firmware updates. Please save and close your work." /d p:4:1'
 }
-else { Write-Output "A reboot may be needed to complete the installation of driver and firmware updates." }
+else { Write-Output "`nA reboot may be needed to complete the installation of driver and firmware updates." }
