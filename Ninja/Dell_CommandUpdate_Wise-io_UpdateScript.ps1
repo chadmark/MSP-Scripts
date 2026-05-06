@@ -15,7 +15,7 @@
     GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.3
+    Version:         1.4
   .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -338,7 +338,7 @@ function Invoke-DellCommandUpdate {
 }
 
 # Override switch params from NinjaOne script variables
-if ($env:Reboot) { $Reboot = $true }
+if ($env:Reboot -and [System.Convert]::ToBoolean($env:Reboot)) { $Reboot = $true }
 
 # Set PowerShell preferences
 Set-Location -Path $env:SystemRoot
