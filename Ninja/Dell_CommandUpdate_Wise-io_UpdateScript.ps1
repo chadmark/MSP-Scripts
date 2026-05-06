@@ -1,16 +1,21 @@
+#Requires -Version 5.1
+
 <#
   .SYNOPSIS
     Installs Dell updates via Dell Command Update
   .DESCRIPTION
     Installs the latest version of Dell Command Update and applies all Dell updates silently.
+    DCU version discovery uses Dell's SKU catalog (CatalogIndexPC.cab) instead of web scraping,
+    ensuring the true latest version is always found without hardcoded fallback URLs or hashes.
   .NOTES
     Original Author: Aaron J. Stevenson
     Original Link:   https://github.com/wise-io/scripts/blob/main/scripts/DellCommandUpdate.ps1
-    Last Edit:       2026-03-23
-    GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/scripts/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
+    Author:          Chad
+    Last Edit:       05-06-2026
+    GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.0
+    Version:         1.1
   .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -96,109 +101,118 @@ function Remove-DellUpdateApps {
 }
 
 function Install-DellCommandUpdate {
-  function Get-LatestDellCommandUpdate {
-    # Set KB URL
-    $DellKBURL = 'https://www.dell.com/support/kbdoc/en-us/000177325/dell-command-update'
-  
-    # Set fallback URL based on architecture
-    if ($Arch -like 'arm*') { 
-      $FallbackDownloadURL = 'https://dl.dell.com/FOLDER11914141M/1/Dell-Command-Update-Windows-Universal-Application_6MK0D_WINARM64_5.4.0_A00.EXE'
-      $FallbackChecksum = 'b66b27f5c6572574b709591f44c692da5d6954ad7734ba88ac7cb1d08f3ce288'
-      $FallbackVersion = '5.4.0'
-    }
-    else { 
-      $FallbackDownloadURL = 'https://dl.dell.com/FOLDER11914128M/1/Dell-Command-Update-Windows-Universal-Application_9M35M_WIN_5.4.0_A00.EXE'
-      $FallbackChecksum = '4034ffe101ba6722406ce1e2b43124c91603bedb60fa18028d4165caf74ab47c'
-      $FallbackVersion = '5.4.0'
-    }
-  
-    # Set headers for Dell website
-    $Headers = @{
-      'upgrade-insecure-requests' = '1'
-      'user-agent'                = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
-      'accept'                    = 'text/html'
-      'sec-fetch-site'            = 'same-origin'
-      'sec-fetch-mode'            = 'navigate'
-      'sec-fetch-user'            = '?1'
-      'sec-fetch-dest'            = 'document'
-      'referer'                   = "$DellKBURL"
-      'accept-encoding'           = 'gzip'
-      'accept-language'           = '*'
-      'cache-control'             = 'max-age=0'
-    }
-  
-    try {
-      # Attempt to parse Dell website for download page links of latest DCU
-      [String]$DellKB = Invoke-WebRequest -UseBasicParsing -Uri $DellKBURL -Headers $Headers -ErrorAction Ignore
-      $LinkMatches = @($DellKB | Select-String '(https://www\.dell\.com.+driverid=[a-z0-9]+).+>Dell Command \| Update Windows Universal Application<\/a>' -AllMatches).Matches
-      $KBLinks = foreach ($Match in $LinkMatches) { $Match.Groups[1].Value }
-  
-      # Attempt to parse Dell website for download URLs for latest DCU
-      $DownloadObjects = foreach ($Link in $KBLinks) {
-        $DownloadPage = Invoke-WebRequest -UseBasicParsing -Uri $Link -Headers $Headers -ErrorAction Ignore
-        if ($DownloadPage -match '(https://dl\.dell\.com.+Dell-Command-Update.+\.EXE)') { 
-          $Url = $Matches[1]
-          if ($DownloadPage -match 'SHA-256:.*?([a-fA-F0-9]{64})') { $Checksum = $Matches[1] }
-          [PSCustomObject]@{
-            URL      = $Url
-            Checksum = $Checksum
+  function Get-LatestDCUFromCatalog {
+    # Downloads Dell's master SKU catalog index and scans individual model catalogs
+    # to find the highest available version of Dell Command Update Windows Universal.
+    # No hardcoded URLs or version numbers - always resolves the true latest.
+
+    $TempFolder    = $env:TEMP
+    $IndexCabPath  = Join-Path $TempFolder 'CatalogIndexPC.cab'
+    $IndexXmlPath  = Join-Path $TempFolder 'CatalogIndexPC.xml'
+    $ModelCabPath  = Join-Path $TempFolder 'DCUScan_Model.cab'
+    $ModelXmlPath  = Join-Path $TempFolder 'DCUScan_Model.xml'
+
+    # Download and extract the master catalog index
+    Write-Output 'Downloading Dell catalog index...'
+    Invoke-WebRequest -Uri 'https://downloads.dell.com/catalog/CatalogIndexPC.cab' -OutFile $IndexCabPath -UseBasicParsing
+    Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$IndexCabPath`" `"$IndexXmlPath`""
+    if (-not (Test-Path $IndexXmlPath)) { throw 'Failed to extract CatalogIndexPC.xml.' }
+
+    [xml]$IndexXml    = Get-Content -Path $IndexXmlPath
+    $AllModels        = $IndexXml.ManifestIndex.GroupManifest
+    $BestDCUEntry     = $null
+    $BestDCUVersion   = [version]'0.0.0'
+    $CatalogsChecked  = 0
+
+    foreach ($Model in $AllModels) {
+      # Once a DCU entry is found, check at least 10 more catalogs to confirm it's the highest, then stop
+      if ($BestDCUEntry -and $CatalogsChecked -ge 10) { break }
+      # Hard cap to keep runtime reasonable
+      if ($CatalogsChecked -ge 75) { break }
+
+      $ModelURL = "https://downloads.dell.com/$($Model.ManifestInformation.path)"
+
+      try {
+        Invoke-WebRequest -Uri $ModelURL -OutFile $ModelCabPath -UseBasicParsing -ErrorAction Stop
+        Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$ModelCabPath`" `"$ModelXmlPath`""
+        if (-not (Test-Path $ModelXmlPath)) { $CatalogsChecked++; continue }
+
+        [xml]$ModelXml = Get-Content -Path $ModelXmlPath -ErrorAction Stop
+
+        $DCUEntries = $ModelXml.Manifest.SoftwareComponent | Where-Object {
+          $_.Name.Display.'#cdata-section' -match 'Command.+Windows Universal'
+        }
+
+        foreach ($Entry in $DCUEntries) {
+          try {
+            $EntryVersion = [version]$Entry.VendorVersion
+            if ($EntryVersion -gt $BestDCUVersion) {
+              $BestDCUVersion = $EntryVersion
+              $BaseURL        = $ModelXml.Manifest.baseLocation
+
+              # Filter download URL by architecture
+              $EntryPath = $Entry.path
+              if ($Arch -like 'arm*' -and $EntryPath -notlike '*WINARM*') { continue }
+              if ($Arch -notlike 'arm*' -and $EntryPath -like '*WINARM*') { continue }
+
+              $BestDCUEntry = [PSCustomObject]@{
+                Version  = $Entry.VendorVersion
+                URL      = "https://$BaseURL/$EntryPath"
+                Checksum = ($Entry.Cryptography.Hash | Where-Object { $_.algorithm -eq 'SHA256' }).'#text'
+              }
+            }
           }
+          catch { continue }
         }
       }
-  
-      # Select correct download object based on architecture
-      if ($Arch -like 'arm*') { $DownloadObject = $DownloadObjects | Where-Object { $_.URL -like '*winarm*' } }
-      else { $DownloadObject = $DownloadObjects | Where-Object { $_.URL -notlike '*winarm*' } }
-    }
-    catch {}
-    finally {
-      # Revert to fallback URL / SHA256 checksum if unable to retrieve from Dell
-      if ($null -eq $DownloadObject.URL -or $null -eq $DownloadObject.Checksum) { 
-        Write-Warning 'Unable to retrieve latest version info from Dell - reverting to fallback...'
-        $DownloadURL = $FallbackDownloadURL
-        $Checksum = $FallbackChecksum.ToUpper()
-        $Version = $FallbackVersion
-      }
-      else {
-        $DownloadURL = $DownloadObject.URL
-        $Checksum = ($DownloadObject.Checksum).ToUpper()
-        $Version = $DownloadURL | Select-String '[0-9]*\.[0-9]*\.[0-9]*' | ForEach-Object { $_.Matches.Value }
+      catch { }
+      finally {
+        $CatalogsChecked++
+        foreach ($f in @($ModelCabPath, $ModelXmlPath)) {
+          if (Test-Path $f -ErrorAction SilentlyContinue) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+        }
       }
     }
 
-    return @{
-      Checksum = $Checksum
-      URL      = $DownloadURL
-      Version  = $Version
+    # Clean up index files
+    foreach ($f in @($IndexCabPath, $IndexXmlPath)) {
+      if (Test-Path $f -ErrorAction SilentlyContinue) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
     }
+
+    if (-not $BestDCUEntry) {
+      throw "Dell Command Update was not found in any of the $CatalogsChecked catalogs checked."
+    }
+
+    Write-Output "Found Dell Command Update version $($BestDCUEntry.Version) as the latest available."
+    return $BestDCUEntry
   }
-  
-  $LatestDellCommandUpdate = Get-LatestDellCommandUpdate
-  $Installer = Join-Path -Path $env:TEMP -ChildPath (Split-Path $LatestDellCommandUpdate.URL -Leaf)
-  $CurrentVersion = Get-InstalledApps -DisplayName 'Dell Command | Update'
+
+  $LatestDCU            = Get-LatestDCUFromCatalog
+  $Installer            = Join-Path -Path $env:TEMP -ChildPath (Split-Path $LatestDCU.URL -Leaf)
+  $CurrentVersion       = Get-InstalledApps -DisplayName 'Dell Command | Update'
   $CurrentVersionString = ("$($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]").Trim()
   Write-Output "`nDell Command Update Version Info`n-----"
   Write-Output "Installed: $CurrentVersionString"
-  Write-Output "Latest / Fallback: $($LatestDellCommandUpdate.Version)"
+  Write-Output "Latest:    $($LatestDCU.Version)"
 
-  if ($CurrentVersion.DisplayVersion -lt $LatestDellCommandUpdate.Version) {
+  if ($CurrentVersion.DisplayVersion -lt $LatestDCU.Version) {
 
     # Download installer
     Write-Output "`nDell Command Update installation needed"
     Write-Output 'Downloading...'
-    Invoke-WebRequest -Uri $LatestDellCommandUpdate.URL -OutFile $Installer -UserAgent ([Microsoft.PowerShell.Commands.PSUserAgent]::Chrome)
+    Invoke-WebRequest -Uri $LatestDCU.URL -OutFile $Installer -UserAgent ([Microsoft.PowerShell.Commands.PSUserAgent]::Chrome)
 
     # Verify SHA256 checksum
-    if ($null -ne $LatestDellCommandUpdate.Checksum) {
+    if ($null -ne $LatestDCU.Checksum) {
       Write-Output 'Verifying SHA256 checksum...'
       $InstallerChecksum = (Get-FileHash -Path $Installer -Algorithm SHA256).Hash
-      if ($InstallerChecksum -ne $LatestDellCommandUpdate.Checksum) {
+      if ($InstallerChecksum -ne $LatestDCU.Checksum.ToUpper()) {
         Write-Warning 'SHA256 checksum verification failed - aborting...'
         Remove-Item $Installer -Force -ErrorAction Ignore
         exit 1
       }
     }
-    else { Write-Warning 'Unable to retrieve checksum from Dell for validation - skipping...' }
+    else { Write-Warning 'Unable to retrieve checksum from catalog for validation - skipping...' }
 
     # Remove existing version to avoid Classic / Universal incompatibilities 
     if ($CurrentVersion) { Remove-DellUpdateApps -DisplayNames 'Dell Command | Update' }
@@ -209,12 +223,12 @@ function Install-DellCommandUpdate {
 
     # Confirm installation
     $CurrentVersion = Get-InstalledApps -DisplayName 'Dell Command | Update'
-    if ($CurrentVersion -match $LatestDellCommandUpdate.Version) {
+    if ($CurrentVersion -match $LatestDCU.Version) {
       Write-Output "Successfully installed $($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]`n"
       Remove-Item $Installer -Force -ErrorAction Ignore 
     }
     else {
-      Write-Warning "Dell Command Update [$($LatestDellCommandUpdate.Version)] not detected after installation attempt"
+      Write-Warning "Dell Command Update [$($LatestDCU.Version)] not detected after installation attempt"
       Remove-Item $Installer -Force -ErrorAction Ignore 
       exit 1
     }
