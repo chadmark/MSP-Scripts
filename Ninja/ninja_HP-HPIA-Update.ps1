@@ -6,17 +6,22 @@
     Assistant (HPIA) if not already present, then runs an analyze-and-install operation
     targeting BIOS, Drivers, and Firmware. Results are parsed from the HPIA JSON report
     and written to the console, including per-item install status and reboot detection.
-    Working files and logs are stored under C:\temp\BrightFlow\HPIA.
+    If the rebootIfRequired checkbox variable is enabled in NinjaOne, the machine will
+    automatically restart if any installation requires it. Working files and logs are
+    stored under C:\temp\BrightFlow\HPIA.
 .NOTES
     Author      : Chad
     Last Edit   : 05-06-2026
     GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_HP-HPIA-Update.ps1
     Environment : NinjaOne RMM — runs as SYSTEM on domain-joined HP endpoints
     Requires    : Internet access to ftp.ext.hp.com and hpia.hpcloud.hp.com
-    Version     : 1.1
+    Version     : 1.2
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
+
+# NinjaOne script variable — checkbox: "rebootIfRequired"
+$RebootIfRequired = $env:rebootIfRequired -eq "true"
 
 # Check if manufacturer is HP
 $Manufacturer = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Manufacturer
@@ -51,7 +56,14 @@ if (($Manufacturer -eq "HP") -or ($Manufacturer -like "Hewlett*")) {
 				$rebootRequired = $true
 			}
 		}
-		if ($rebootRequired) { Write-Host "`n>> Reboot required to complete one or more installations." }
+		if ($rebootRequired) {
+			if ($RebootIfRequired) {
+				Write-Host "`n>> Reboot required — initiating restart..."
+				Restart-Computer -Force
+			} else {
+				Write-Host "`n>> Reboot required to complete one or more installations. Reboot the machine at your earliest convenience."
+			}
+		}
 	}
 	if (Test-Path "$hpiaDirectory\HPImageAssistant.exe") {
 		# Run HP Image Assistant if it's already installed
