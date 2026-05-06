@@ -10,14 +10,14 @@
     automatically restart if any installation requires it. Working files and logs are
     stored under C:\temp\BrightFlow\HPIA.
 .NOTES
-    Author      : Chad
-	Original Author: bf-ryanalexander
-	Original URL: https://github.com/bf-ryanalexander/Scripts/blob/main/Update-HPDrivers.ps1
-    Last Edit   : 05-06-2026
-    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_HP-HPIA-Update.ps1
-    Environment : NinjaOne RMM — runs as SYSTEM on domain-joined HP endpoints
-    Requires    : Internet access to ftp.ext.hp.com and hpia.hpcloud.hp.com
-    Version     : 1.2
+    Author          : Chad
+    Original Author : bf-ryanalexander
+    Last Edit       : 05-06-2026
+    GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_HP-HPIA-Update.ps1
+    Original Link   : https://github.com/bf-ryanalexander/Scripts/blob/main/Update-HPDrivers.ps1
+    Environment     : NinjaOne RMM — runs as SYSTEM on domain-joined HP endpoints
+    Requires        : Internet access to ftp.ext.hp.com and hpia.hpcloud.hp.com
+    Version         : 1.2
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
