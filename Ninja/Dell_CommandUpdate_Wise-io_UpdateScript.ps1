@@ -15,7 +15,7 @@
     GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.5
+    Version:         1.6
   .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -120,12 +120,41 @@ function Install-DellCommandUpdate {
     return $Content
   }
 
+  function Test-DCUCompatibility {
+    # Checks whether this machine's SKU catalog includes a DCU Windows Universal entry.
+    # Returns $true if compatible, exits 0 with a friendly message if not.
+    param([Parameter(Mandatory)][xml]$IndexXml)
+
+    $SystemSKU     = (Get-CimInstance -ClassName Win32_ComputerSystem).SystemSKUNumber
+    $MatchedModel  = $IndexXml.ManifestIndex.GroupManifest | Where-Object {
+      $SystemSKU -match $_.SupportedSystems.Brand.Model.systemID
+    } | Select-Object -First 1
+
+    if ($null -eq $MatchedModel) {
+      Write-Output "This Dell system (SKU: $SystemSKU) was not found in the Dell catalog - aborting..."
+      exit 0
+    }
+
+    $ModelXml    = Get-DellXML -Uri "https://downloads.dell.com/$($MatchedModel.ManifestInformation.path)"
+    $UniversalEntry = $ModelXml.Manifest.SoftwareComponent | Where-Object {
+      $_.Name.Display.'#cdata-section' -match 'Command.+Windows Universal' -and
+      $_.path -notlike '*WINARM*'
+    } | Select-Object -First 1
+
+    if ($null -eq $UniversalEntry) {
+      Write-Output "This Dell system (SKU: $SystemSKU) does not support Dell Command Update Windows Universal - aborting..."
+      exit 0
+    }
+
+    Write-Output "SKU $SystemSKU confirmed compatible with Dell Command Update Windows Universal."
+  }
+
   function Get-LatestDCUFromCatalog {
     # Downloads Dell's master SKU catalog index and scans individual model catalogs
     # to find the highest available version of Dell Command Update Windows Universal.
     # No hardcoded URLs or version numbers - always resolves the true latest.
+    param([Parameter(Mandatory)][xml]$IndexXml)
 
-    $IndexXml        = Get-DellXML -Uri 'https://downloads.dell.com/catalog/CatalogIndexPC.cab'
     $AllModels       = $IndexXml.ManifestIndex.GroupManifest
     $BestDCUEntry    = $null
     $BestDCUVersion  = [version]'0.0.0'
@@ -140,7 +169,7 @@ function Install-DellCommandUpdate {
       if ($CatalogsChecked -ge 75) { break }
 
       try {
-        $ModelXml  = Get-DellXML -Uri "https://downloads.dell.com/$($Model.ManifestInformation.path)"
+        $ModelXml   = Get-DellXML -Uri "https://downloads.dell.com/$($Model.ManifestInformation.path)"
         $DCUEntries = $ModelXml.Manifest.SoftwareComponent | Where-Object {
           $_.Name.Display.'#cdata-section' -match 'Command.+Windows Universal' -and
           $_.path -notlike '*WINARM*'
@@ -173,7 +202,11 @@ function Install-DellCommandUpdate {
     return $BestDCUEntry
   }
 
-  $LatestDCU            = Get-LatestDCUFromCatalog
+  # Download catalog index once - shared by both compatibility check and version scan
+  Write-Output 'Downloading Dell catalog index...'
+  $IndexXml  = Get-DellXML -Uri 'https://downloads.dell.com/catalog/CatalogIndexPC.cab'
+  Test-DCUCompatibility -IndexXml $IndexXml
+  $LatestDCU = Get-LatestDCUFromCatalog -IndexXml $IndexXml
   $Installer            = Join-Path -Path $env:TEMP -ChildPath (Split-Path $LatestDCU.URL -Leaf)
   $InstallerLog         = "$Installer.log"
   $CurrentVersion       = Get-InstalledApps -DisplayNames 'Dell Command | Update'
