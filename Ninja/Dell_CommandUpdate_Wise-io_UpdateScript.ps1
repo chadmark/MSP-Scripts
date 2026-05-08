@@ -15,7 +15,7 @@
     GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.4
+    Version:         1.5
   .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -101,28 +101,37 @@ function Remove-DellUpdateApps {
 }
 
 function Install-DellCommandUpdate {
+  function Get-DellXML {
+    # Downloads a Dell CAB file from the given URI, extracts it, and returns the XML content.
+    # Suppresses expand.exe console output. Cleans up temp files on completion.
+    param([Parameter(Mandatory)][String]$Uri)
+
+    $TempCAB = Join-Path $env:TEMP 'dell_temp.cab'
+    $TempXML = Join-Path $env:TEMP 'dell_temp.xml'
+    Remove-Item $TempCAB, $TempXML -Force -ErrorAction Ignore
+
+    Invoke-WebRequest -Uri $Uri -OutFile $TempCAB -UseBasicParsing
+    if (-not (Test-Path $TempCAB)) { throw "Unable to download CAB from $Uri" }
+
+    Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$TempCAB`" `"$TempXML`"" -RedirectStandardOutput 'NUL'
+    [xml]$Content = Get-Content $TempXML
+
+    Remove-Item $TempCAB, $TempXML -Force -ErrorAction Ignore
+    return $Content
+  }
+
   function Get-LatestDCUFromCatalog {
     # Downloads Dell's master SKU catalog index and scans individual model catalogs
     # to find the highest available version of Dell Command Update Windows Universal.
     # No hardcoded URLs or version numbers - always resolves the true latest.
 
-    $TempFolder    = $env:TEMP
-    $IndexCabPath  = Join-Path $TempFolder 'CatalogIndexPC.cab'
-    $IndexXmlPath  = Join-Path $TempFolder 'CatalogIndexPC.xml'
-    $ModelCabPath  = Join-Path $TempFolder 'DCUScan_Model.cab'
-    $ModelXmlPath  = Join-Path $TempFolder 'DCUScan_Model.xml'
+    $IndexXml        = Get-DellXML -Uri 'https://downloads.dell.com/catalog/CatalogIndexPC.cab'
+    $AllModels       = $IndexXml.ManifestIndex.GroupManifest
+    $BestDCUEntry    = $null
+    $BestDCUVersion  = [version]'0.0.0'
+    $CatalogsChecked = 0
 
-    # Download and extract the master catalog index
-    Write-Output 'Downloading Dell catalog index...'
-    Invoke-WebRequest -Uri 'https://downloads.dell.com/catalog/CatalogIndexPC.cab' -OutFile $IndexCabPath -UseBasicParsing
-    Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$IndexCabPath`" `"$IndexXmlPath`"" -RedirectStandardOutput 'NUL'
-    if (-not (Test-Path $IndexXmlPath)) { throw 'Failed to extract CatalogIndexPC.xml.' }
-
-    [xml]$IndexXml    = Get-Content -Path $IndexXmlPath
-    $AllModels        = $IndexXml.ManifestIndex.GroupManifest
-    $BestDCUEntry     = $null
-    $BestDCUVersion   = [version]'0.0.0'
-    $CatalogsChecked  = 0
+    Write-Output 'Scanning Dell catalogs for latest DCU version...'
 
     foreach ($Model in $AllModels) {
       # Once a DCU entry is found, check at least 10 more catalogs to confirm it's the highest, then stop
@@ -130,17 +139,11 @@ function Install-DellCommandUpdate {
       # Hard cap to keep runtime reasonable
       if ($CatalogsChecked -ge 75) { break }
 
-      $ModelURL = "https://downloads.dell.com/$($Model.ManifestInformation.path)"
-
       try {
-        Invoke-WebRequest -Uri $ModelURL -OutFile $ModelCabPath -UseBasicParsing -ErrorAction Stop
-        Start-Process -Wait -NoNewWindow -FilePath 'expand.exe' -ArgumentList "`"$ModelCabPath`" `"$ModelXmlPath`"" -RedirectStandardOutput 'NUL'
-        if (-not (Test-Path $ModelXmlPath)) { $CatalogsChecked++; continue }
-
-        [xml]$ModelXml = Get-Content -Path $ModelXmlPath -ErrorAction Stop
-
+        $ModelXml  = Get-DellXML -Uri "https://downloads.dell.com/$($Model.ManifestInformation.path)"
         $DCUEntries = $ModelXml.Manifest.SoftwareComponent | Where-Object {
-          $_.Name.Display.'#cdata-section' -match 'Command.+Windows Universal'
+          $_.Name.Display.'#cdata-section' -match 'Command.+Windows Universal' -and
+          $_.path -notlike '*WINARM*'
         }
 
         foreach ($Entry in $DCUEntries) {
@@ -148,16 +151,9 @@ function Install-DellCommandUpdate {
             $EntryVersion = [version]$Entry.VendorVersion
             if ($EntryVersion -gt $BestDCUVersion) {
               $BestDCUVersion = $EntryVersion
-              $BaseURL        = $ModelXml.Manifest.baseLocation
-
-              # Filter download URL by architecture
-              $EntryPath = $Entry.path
-              if ($Arch -like 'arm*' -and $EntryPath -notlike '*WINARM*') { continue }
-              if ($Arch -notlike 'arm*' -and $EntryPath -like '*WINARM*') { continue }
-
-              $BestDCUEntry = [PSCustomObject]@{
+              $BestDCUEntry   = [PSCustomObject]@{
                 Version  = $Entry.VendorVersion
-                URL      = "https://$BaseURL/$EntryPath"
+                URL      = "https://$($ModelXml.Manifest.baseLocation)/$($Entry.path)"
                 Checksum = ($Entry.Cryptography.Hash | Where-Object { $_.algorithm -eq 'SHA256' }).'#text'
               }
             }
@@ -166,17 +162,7 @@ function Install-DellCommandUpdate {
         }
       }
       catch { }
-      finally {
-        $CatalogsChecked++
-        foreach ($f in @($ModelCabPath, $ModelXmlPath)) {
-          if (Test-Path $f -ErrorAction SilentlyContinue) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
-        }
-      }
-    }
-
-    # Clean up index files
-    foreach ($f in @($IndexCabPath, $IndexXmlPath)) {
-      if (Test-Path $f -ErrorAction SilentlyContinue) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+      finally { $CatalogsChecked++ }
     }
 
     if (-not $BestDCUEntry) {
@@ -189,7 +175,8 @@ function Install-DellCommandUpdate {
 
   $LatestDCU            = Get-LatestDCUFromCatalog
   $Installer            = Join-Path -Path $env:TEMP -ChildPath (Split-Path $LatestDCU.URL -Leaf)
-  $CurrentVersion       = Get-InstalledApps -DisplayName 'Dell Command | Update'
+  $InstallerLog         = "$Installer.log"
+  $CurrentVersion       = Get-InstalledApps -DisplayNames 'Dell Command | Update'
   $CurrentVersionString = ("$($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]").Trim()
   Write-Output "`nDell Command Update Version Info`n-----"
   Write-Output "Installed: $CurrentVersionString"
@@ -219,19 +206,16 @@ function Install-DellCommandUpdate {
 
     # Install Dell Command Update
     Write-Output 'Installing latest...'
-    Start-Process -Wait -NoNewWindow -FilePath $Installer -ArgumentList '/s'
+    $InstallerProcess = Start-Process -Wait -NoNewWindow -PassThru -FilePath $Installer -ArgumentList "/s /l=`"$InstallerLog`""
+    Remove-Item $Installer -Force -ErrorAction Ignore
 
-    # Confirm installation
-    $CurrentVersion = Get-InstalledApps -DisplayName 'Dell Command | Update'
-    if ($CurrentVersion -match $LatestDCU.Version) {
-      Write-Output "Successfully installed $($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]`n"
-      Remove-Item $Installer -Force -ErrorAction Ignore 
-    }
-    else {
-      Write-Warning "Dell Command Update [$($LatestDCU.Version)] not detected after installation attempt"
-      Remove-Item $Installer -Force -ErrorAction Ignore 
+    # Confirm via exit code (0 = success, 2 = success + reboot required)
+    if ($InstallerProcess.ExitCode -ne 0 -and $InstallerProcess.ExitCode -ne 2) {
+      Write-Warning "DCU installer exited with code $($InstallerProcess.ExitCode). See log: $InstallerLog"
       exit 1
     }
+
+    Write-Output "Successfully installed Dell Command Update [$($LatestDCU.Version)]`n"
   }
   else { Write-Output "`nDell Command Update installation / upgrade not needed`n" }
 }
