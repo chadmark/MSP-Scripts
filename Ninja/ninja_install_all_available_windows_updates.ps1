@@ -3,31 +3,33 @@
     Installs all available Windows updates silently without reboot.
 
     .DESCRIPTION
-    Ensures the PSWindowsUpdate module is installed, then installs all available
-    Windows and Microsoft updates silently. Does not trigger a reboot.
-    Registers the Microsoft Update service via Add-WUServiceManager before
-    running Get-WindowsUpdate to prevent "Value does not fall within the expected
-    range" errors on machines where the service is not already registered.
+    Ensures PSWindowsUpdate 2.2.0.3 is installed (pinned for stability), registers
+    the Microsoft Update service, then installs all available updates. Uses -ServiceID
+    instead of the -MicrosoftUpdate switch on Get-WindowsUpdate to avoid a known
+    ArgumentException in newer PSWindowsUpdate builds.
 
     .NOTES
     Original Author : Aaron Stevenson
     Author          : Chad Mark
-    Last Edit       : 05-05-2026
+    Last Edit       : 05-08-2026
     GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_install_all_available_windows_updates.ps1
     Environment     : Windows 10/11, NinjaOne RMM (runs as SYSTEM)
     Requires        : PowerShell 5.1+, Internet access
-    Version         : 1.1
+    Version         : 1.3
 
     .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
 
-function Install-PSModule {
-    param(
-        [Parameter(Position = 0, Mandatory = $true)]
-        [String[]]$Modules
-    )
+# Bypass execution policy for this session only — does not change machine policy.
+# Required when running interactively on machines with restricted execution policy.
+# NinjaOne bypasses this automatically; this ensures parity when running manually.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
+# Microsoft Update service GUID — stable, does not change
+$MicrosoftUpdateServiceID = '7971f918-a847-4430-9279-4a52d1efe18d'
+
+function Install-PSWindowsUpdate {
     Write-Output "`nChecking for necessary PowerShell modules..."
 
     try {
@@ -49,14 +51,19 @@ function Install-PSModule {
             Set-PSRepository -Name 'PSGallery' -InstallationPolicy 'Trusted'
         }
 
-        foreach ($Module in $Modules) {
-            if (!(Get-Module -ListAvailable -Name $Module -ErrorAction Ignore)) {
-                Write-Output "Installing $Module module..."
-                Install-Module -Name $Module -Force
-            }
-            Import-Module $Module
+        # Pin to 2.2.0.3 — last widely-tested stable version.
+        # Newer builds have a known ArgumentException when calling Get-WindowsUpdate
+        # against the Microsoft Update service on some Windows builds.
+        $pinnedVersion = '2.2.0.3'
+        $installed = Get-Module -ListAvailable -Name 'PSWindowsUpdate' |
+                     Where-Object { $_.Version -eq $pinnedVersion }
+
+        if (-not $installed) {
+            Write-Output "Installing PSWindowsUpdate $pinnedVersion..."
+            Install-Module -Name 'PSWindowsUpdate' -RequiredVersion $pinnedVersion -Force
         }
 
+        Import-Module 'PSWindowsUpdate' -RequiredVersion $pinnedVersion -Force
         Write-Output 'Modules installed successfully.'
     }
     catch {
@@ -73,12 +80,10 @@ function Install-PSModule {
 $ForceReboot = $env:forceReboot
 # -----------------------
 
-# Install PSWindowsUpdate module
-Install-PSModule -Modules @('PSWindowsUpdate')
+# Install pinned PSWindowsUpdate module
+Install-PSWindowsUpdate
 
-# Register the Microsoft Update service if not already registered.
-# Skipping this on machines where the service GUID is absent causes
-# Get-WindowsUpdate to throw "Value does not fall within the expected range."
+# Register the Microsoft Update service if not already present
 Write-Output "`nRegistering Microsoft Update service..."
 try {
     Add-WUServiceManager -MicrosoftUpdate -Confirm:$false -ErrorAction Stop
@@ -88,10 +93,12 @@ catch {
     Write-Output "Note: Microsoft Update service registration skipped — $_"
 }
 
-# Install all available Windows and Microsoft updates
+# Install all available updates.
+# -ServiceID targets Microsoft Update directly instead of using the -MicrosoftUpdate
+# switch, which throws "Value does not fall within the expected range" on affected builds.
 Write-Output "`nChecking for available updates..."
 if ($ForceReboot -eq "true") {
-    Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -Install -AutoReboot
+    Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -AutoReboot
 } else {
-    Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -Install -IgnoreReboot
+    Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -IgnoreReboot
 }
