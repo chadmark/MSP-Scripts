@@ -16,6 +16,7 @@
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
     Version:         1.8
+    Ninja Note:      Checkbox variable required — Name: "Reboot if needed", Calculated name: rebootIfNeeded
   .CHANGELOG
     1.8 - 05-09-2026 - Updated Reboot env var to rebootIfNeeded to match NinjaOne calculated name
     1.7 - 05-09-2026 - Reboot checkbox now conditional on DCU exit code (exit 1 = reboot required)
