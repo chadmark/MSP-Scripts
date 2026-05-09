@@ -16,6 +16,10 @@
     Environment     : Windows 10/11, NinjaOne RMM (runs as SYSTEM)
     Requires        : PowerShell 5.1+, Internet access
     Version         : 1.3
+    Ninja Note      : Script variable required:
+                      forceReboot | Env: forceReboot | Type: Checkbox
+                      Unchecked = suppress reboot (-IgnoreReboot)
+                      Checked   = reboot if required (-AutoReboot)
 
     .CHANGELOG
     1.0 - 05-05-2026 - Initial release
