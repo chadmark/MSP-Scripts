@@ -17,6 +17,12 @@
     Requires        : PowerShell 5.1+, Internet access
     Version         : 1.3
 
+    .CHANGELOG
+    1.0 - 05-05-2026 - Initial release
+    1.1 - 05-05-2026 - Added Add-WUServiceManager to register Microsoft Update service before Get-WindowsUpdate
+    1.2 - 05-05-2026 - Pinned PSWindowsUpdate to 2.2.0.3; switched Get-WindowsUpdate to use -ServiceID instead of -MicrosoftUpdate
+    1.3 - 05-08-2026 - Added Set-ExecutionPolicy Bypass (Process scope) for interactive use on restricted machines
+
     .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
