@@ -15,8 +15,9 @@
     GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.7
+    Version:         1.8
   .CHANGELOG
+    1.8 - 05-09-2026 - Updated Reboot env var to rebootIfNeeded to match NinjaOne calculated name
     1.7 - 05-09-2026 - Reboot checkbox now conditional on DCU exit code (exit 1 = reboot required)
     1.6 - 05-09-2026 - Added SKU compatibility check; catalog index downloaded once and shared
     1.5 - 05-09-2026 - Added Get-DellXML helper; installer log and exit code validation
@@ -364,7 +365,7 @@ function Invoke-DellCommandUpdate {
 }
 
 # Override switch params from NinjaOne script variables
-if ($env:Reboot -and [System.Convert]::ToBoolean($env:Reboot)) { $Reboot = $true }
+if ($env:rebootIfNeeded -and [System.Convert]::ToBoolean($env:rebootIfNeeded)) { $Reboot = $true }
 
 # Set PowerShell preferences
 Set-Location -Path $env:SystemRoot
