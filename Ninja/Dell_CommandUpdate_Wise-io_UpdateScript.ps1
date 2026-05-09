@@ -15,7 +15,15 @@
     GitHub:          https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/Dell_CommandUpdate_Wise-io_UpdateScript.ps1
     Environment:     Windows 10/11
     Requires:        PowerShell 5.1+, Dell hardware
-    Version:         1.6
+    Version:         1.7
+  .CHANGELOG
+    1.7 - 05-09-2026 - Reboot checkbox now conditional on DCU exit code (exit 1 = reboot required)
+    1.6 - 05-09-2026 - Added SKU compatibility check; catalog index downloaded once and shared
+    1.5 - 05-09-2026 - Added Get-DellXML helper; installer log and exit code validation
+    1.4 - 05-09-2026 - Fixed Reboot env var boolean conversion for NinjaOne checkbox
+    1.3 - 05-09-2026 - Suppressed expand.exe console output
+    1.2 - 05-09-2026 - Added NinjaOne Reboot checkbox variable support
+    1.1 - 05-09-2026 - Replaced hardcoded DCU version with dynamic catalog discovery
   .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -344,8 +352,9 @@ function Invoke-DellCommandUpdate {
     # Configure DCU automatic updates
     Start-Process -NoNewWindow -Wait -FilePath $DCU -ArgumentList '/configure -scheduleAction=DownloadInstallAndNotify -updatesNotification=disable -forceRestart=disable -scheduleAuto -silent'
     
-    # Install updates
-    Start-Process -NoNewWindow -Wait -FilePath $DCU -ArgumentList '/applyUpdates -autoSuspendBitLocker=enable -reboot=disable'
+    # Install updates - capture exit code (0 = success, 1 = reboot required)
+    $DCUProcess = Start-Process -NoNewWindow -Wait -PassThru -FilePath $DCU -ArgumentList '/applyUpdates -autoSuspendBitLocker=enable -reboot=disable'
+    return $DCUProcess.ExitCode
   }
   catch {
     Write-Warning 'Unable to apply updates using the dcu-cli.'
@@ -378,11 +387,14 @@ Install-DotNetDesktopRuntime
 
 # Install DCU and available updates
 Install-DellCommandUpdate
-Invoke-DellCommandUpdate
+$DCUExitCode = Invoke-DellCommandUpdate
 
-# Reboot if specified
+# Reboot if specified and DCU indicates it is required (exit code 1)
 if ($Reboot) {
-  Write-Warning 'Reboot specified - rebooting in 60 seconds...'
-  Start-Process -Wait -NoNewWindow -FilePath 'shutdown.exe' -ArgumentList '/r /f /t 60 /c "This system will restart in 60 seconds to install driver and firmware updates. Please save and close your work." /d p:4:1'
+  if ($DCUExitCode -eq 1) {
+    Write-Warning 'Reboot required by DCU and reboot checkbox is set - rebooting in 60 seconds...'
+    Start-Process -Wait -NoNewWindow -FilePath 'shutdown.exe' -ArgumentList '/r /f /t 60 /c "This system will restart in 60 seconds to complete Dell update installation. Please save and close your work." /d p:4:1'
+  }
+  else { Write-Output "`nReboot checkbox is set but DCU did not indicate a reboot is required - skipping reboot." }
 }
 else { Write-Output "`nA reboot may be needed to complete the installation of driver and firmware updates." }
