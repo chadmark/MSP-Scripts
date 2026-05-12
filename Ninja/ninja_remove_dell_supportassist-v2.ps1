@@ -2,23 +2,26 @@
 
 <#
 .SYNOPSIS
-    Removes Dell SupportAssist and Dell SupportAssist Remediation from the system.
+    Stops, disables, and removes Dell SupportAssist, Dell SupportAssist Remediation, and Dell SupportAssist PC Analytics.
 .DESCRIPTION
-    Detects and silently removes Dell SupportAssist and Dell SupportAssist Remediation
+    Stops and disables the Dell SupportAssist and Dell SupportAssist Remediation services (matched by display name),
+    then detects and silently removes Dell SupportAssist, Dell SupportAssist Remediation, and Dell SupportAssist PC Analytics
     using each app's registered uninstall method (msiexec GUID or SupportAssistUninstaller.exe).
-    Each app is handled independently — a failure on one does not block removal of the other.
+    Each app is handled independently — a failure on one does not block removal of the others.
     Terminates any running SupportAssistClientUI process after removal attempts complete.
 .NOTES
     Author       Chad Mark
     Last Edit    05-12-2025
-    GitHub       chadmark/MSP-Scripts/Ninja/ninja_remove_dell_supportassist.ps1
+    GitHub       chadmark/MSP-Scripts/Ninja/ninja_remove_dell_supportassist-v2.ps1
     Environment  NinjaOne — runs as SYSTEM on domain-joined Windows endpoints
     Requires     PowerShell 5.1+, Administrator privileges
-    Version      1.1
+    Version      1.3
 
 .CHANGELOG
     1.0 - 05-12-2025 - Initial release; fixed not-found exit code, fixed UninstallString path splitting
     1.1 - 05-12-2025 - Added independent removal of Dell SupportAssist Remediation; extracted Invoke-AppUninstall helper
+    1.2 - 05-12-2025 - Added independent removal of Dell SupportAssist PC Analytics
+    1.3 - 05-12-2025 - Added service stop/disable step before uninstall; added Invoke-ServiceStopDisable helper
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -31,6 +34,30 @@ begin {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
+    # Stops and disables a service matched by display name. Non-fatal — logs warn if not found.
+    function Invoke-ServiceStopDisable {
+        param ([string]$DisplayName)
+
+        $svc = Get-Service | Where-Object { $_.DisplayName -eq $DisplayName } | Select-Object -First 1
+
+        if (-not $svc) {
+            Write-Host "[Info] Service '$DisplayName' not found. Skipping."
+            return
+        }
+
+        Write-Host "[Info] Stopping service '$DisplayName'..."
+        try {
+            if ($svc.Status -ne 'Stopped') {
+                Stop-Service -Name $svc.Name -Force -ErrorAction Stop
+            }
+            Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction Stop
+            Write-Host "[Info] Service '$DisplayName' stopped and disabled."
+        }
+        catch {
+            Write-Host "[Warn] Failed to stop/disable service '$DisplayName'. $_"
+        }
     }
 
     # Returns $true on success, $false on failure — caller decides whether to set error flag
@@ -102,6 +129,10 @@ process {
 
     $ErrorOccurred = $false
 
+    # --- Stop and disable services ---
+    Invoke-ServiceStopDisable -DisplayName 'Dell SupportAssist'
+    Invoke-ServiceStopDisable -DisplayName 'Dell SupportAssist Remediation'
+
     # --- Dell SupportAssist ---
     $DellSA = Get-ItemProperty -Path $RegPaths |
         Where-Object { $_.DisplayName -eq 'Dell SupportAssist' } |
@@ -130,6 +161,23 @@ process {
     else {
         Write-Host "[Info] Dell SupportAssist Remediation found."
         $DellSAR | ForEach-Object {
+            if (-not (Invoke-AppUninstall -DisplayName $_.DisplayName -UninstallString $_.UninstallString)) {
+                $ErrorOccurred = $true
+            }
+        }
+    }
+
+    # --- Dell SupportAssist PC Analytics ---
+    $DellSAPA = Get-ItemProperty -Path $RegPaths |
+        Where-Object { $_.DisplayName -eq 'Dell SupportAssist PC Analytics' } |
+        Select-Object -Property DisplayName, UninstallString
+
+    if (-not $DellSAPA) {
+        Write-Host "[Info] Dell SupportAssist PC Analytics not found. Skipping."
+    }
+    else {
+        Write-Host "[Info] Dell SupportAssist PC Analytics found."
+        $DellSAPA | ForEach-Object {
             if (-not (Invoke-AppUninstall -DisplayName $_.DisplayName -UninstallString $_.UninstallString)) {
                 $ErrorOccurred = $true
             }
