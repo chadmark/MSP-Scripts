@@ -4,21 +4,33 @@
 
 .DESCRIPTION
     Runs in 64-bit PowerShell (self-relaunches if needed) and requires elevation.
-    Checks ProtectionStatus and VolumeStatus to determine the drive state before acting:
-      - Fully protected: skips encryption, ensures key protector, backs up to AD DS, writes to Ninja.
-      - Partially encrypted / suspended (VolumeStatus != FullyDecrypted + recovery protector exists):
-        resumes BitLocker, ensures key protector, backs up to AD DS, writes to Ninja.
+    Checks ProtectionStatus, VolumeStatus, and existing key protectors to determine drive state before acting:
+      - Fully protected (ProtectionStatus=On): skips encryption, ensures key protector, backs up to AD DS,
+        writes to Ninja.
+      - Protector orphan (ProtectionStatus=Off but RecoveryPassword protector already exists): resumes
+        BitLocker without adding a duplicate protector, backs up to AD DS, writes to Ninja. Handles the case
+        where a prior run added a protector but did not complete (avoids 0x80310031 duplicate protector error).
+      - Partially encrypted / suspended (VolumeStatus != FullyDecrypted + recovery protector exists): resumes
+        BitLocker, ensures key protector, backs up to AD DS, writes to Ninja.
       - Not protected: adds RecoveryPassword protector first (required by GPO before Enable-BitLocker),
         enables with TPM if available (else RecoveryPassword only), backs up to AD DS, writes to Ninja.
     Uses XtsAes256 + UsedSpaceOnly for fast rollout with strong encryption.
 
 .NOTES
     Author      : Chad
-    Last Edit   : 03/23/2026
+    Last Edit   : 05-15-2026
     GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_Enablebitlocker_WritetoCustomFieldAndAD.ps1
     Environment : NinjaOne RMM (script runner), domain-joined Windows endpoints
     Requires    : Administrator, BitLocker feature, AD DS (for key backup), Ninja-Property-Set cmdlet
-    Version     : 1.0
+    Version     : 1.1
+    Ninja Note  : No script variables required. Custom field name: bitlockerKey (text field, must exist
+                  in NinjaOne before running).
+
+.CHANGELOG
+    1.0 - 03-23-2026 - Initial release
+    1.1 - 05-15-2026 - Added protector-orphan branch to handle ProtectionStatus=Off with existing
+                       RecoveryPassword protector; prevents 0x80310031 duplicate protector error on
+                       machines where a prior run partially completed
 
 .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -126,6 +138,9 @@ try {
     )
 
     $alreadyEncrypting = ($volumeStatus -ne 'FullyDecrypted') -and $hasRecoveryPassword
+    # ProtectionStatus=Off but a protector already exists — prior run added the protector but did not complete.
+    # Must not call Add-BitLockerKeyProtector again or it throws 0x80310031 (duplicate protector).
+    $protectorOrphan   = (-not $isProtected) -and $hasRecoveryPassword
     # *** END CHANGED ***
 
     if ($isProtected) {
@@ -134,6 +149,12 @@ try {
         Backup-RecoveryPasswordToAD      -MountPoint $mountPoint
     }
     # *** CHANGED: new elseif catches partially-encrypted / suspended state ***
+    elseif ($protectorOrphan) {
+        Write-Host "ProtectionStatus=Off but a Recovery Password protector already exists on $mountPoint."
+        Write-Host "Prior run likely added the protector but did not complete. Resuming BitLocker and writing key to Ninja..."
+        try { Resume-BitLocker -MountPoint $mountPoint -ErrorAction Stop | Out-Null } catch { }
+        Backup-RecoveryPasswordToAD -MountPoint $mountPoint
+    }
     elseif ($alreadyEncrypting) {
         Write-Host "BitLocker encryption is already underway or a key protector exists (VolumeStatus=$volumeStatus). Skipping encryption."
         Write-Host "Ensuring Recovery Password protector and backing up to AD DS..."
