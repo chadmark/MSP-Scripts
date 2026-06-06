@@ -1,0 +1,7 @@
+services:
+  markitdown:
+    build: .
+    container_name: markitdown
+    restart: unless-stopped
+    ports:
+      - "5000:5000"

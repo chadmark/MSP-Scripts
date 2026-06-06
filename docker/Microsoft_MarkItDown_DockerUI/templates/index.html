@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MarkItDown</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0e0f11;
+      --surface:   #16181c;
+      --border:    #2a2d34;
+      --accent:    #4fffb0;
+      --accent-dim:#1a5c42;
+      --text:      #e8eaed;
+      --muted:     #6b7280;
+      --danger:    #ff5f57;
+      --mono:      'JetBrains Mono', monospace;
+      --display:   'Syne', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 640px;
+      position: relative;
+      z-index: 1;
+    }
+
+    header { margin-bottom: 2.5rem; text-align: left; }
+
+    .wordmark {
+      font-family: var(--display);
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .wordmark span { color: var(--accent); }
+
+    .tagline {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .dropzone {
+      border: 1.5px dashed var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+      border-color: var(--accent);
+      background: #16201c;
+    }
+    .dropzone.drag-over::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(79,255,176,.04);
+    }
+
+    .drop-icon { width: 40px; height: 40px; margin: 0 auto 1rem; opacity: .5; }
+
+    .drop-label { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+    .drop-label strong { color: var(--accent); cursor: pointer; }
+    .drop-label strong:hover { text-decoration: underline; }
+
+    .formats { margin-top: 0.75rem; font-size: 0.65rem; color: #3d4350; letter-spacing: 0.04em; }
+
+    input[type="file"] { display: none; }
+
+    #file-list { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      animation: slide-in .15s ease;
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .file-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%; }
+    .file-size { color: var(--muted); flex-shrink: 0; margin-left: .5rem; }
+    .remove-btn {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 1rem; line-height: 1;
+      padding: 0 0.25rem; margin-left: 0.5rem; flex-shrink: 0;
+    }
+    .remove-btn:hover { color: var(--danger); }
+
+    #convert-btn {
+      margin-top: 1.25rem;
+      width: 100%;
+      padding: 0.85rem;
+      background: var(--accent);
+      color: #0a1a12;
+      border: none;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      display: none;
+    }
+    #convert-btn:hover { opacity: .88; }
+    #convert-btn:active { transform: scale(.99); }
+    #convert-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Log box ── */
+    #log-wrap {
+      margin-top: 1rem;
+      display: none;
+    }
+
+    #log-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    #log {
+      background: #0a0b0d;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      font-size: 0.72rem;
+      line-height: 1.7;
+      max-height: 180px;
+      overflow-y: auto;
+      color: var(--muted);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    #log .log-progress { color: var(--muted); }
+    #log .log-done     { color: var(--accent); }
+    #log .log-error    { color: var(--danger); }
+
+    /* blinking cursor on last line while running */
+    #log .log-cursor::after {
+      content: '▌';
+      animation: blink .8s step-end infinite;
+      color: var(--accent);
+      margin-left: 2px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* download link */
+    #download-wrap {
+      margin-top: 1rem;
+      display: none;
+      text-align: center;
+      gap: 0.6rem;
+      flex-direction: column;
+    }
+
+    #download-link {
+      display: inline-block;
+      padding: 0.7rem 2rem;
+      background: transparent;
+      border: 1.5px solid var(--accent);
+      border-radius: 4px;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    #download-link:hover {
+      background: var(--accent);
+      color: #0a1a12;
+    }
+
+    #clear-btn {
+      display: inline-block;
+      padding: 0.5rem 2rem;
+      background: transparent;
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    #clear-btn:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    #status {
+      margin-top: 0.75rem;
+      font-size: 0.72rem;
+      min-height: 1.2rem;
+      text-align: center;
+    }
+    .status-ok   { color: var(--accent); }
+    .status-err  { color: var(--danger); }
+    .status-info { color: var(--muted); }
+
+    .spinner {
+      display: inline-block;
+      width: 0.75rem; height: 0.75rem;
+      border: 2px solid var(--accent-dim);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    footer {
+      margin-top: 3rem;
+      font-size: 0.65rem;
+      color: #2d3039;
+      text-align: center;
+      letter-spacing: 0.06em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="wordmark">Mark<span>ItDown</span></div>
+      <div class="tagline">Convert documents to Markdown &mdash; Markley Technologies</div>
+    </header>
+
+    <div class="dropzone" id="dropzone">
+      <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+      </svg>
+      <div class="drop-label">
+        Drop files here or <strong id="browse-link">browse</strong>
+      </div>
+      <div class="formats">PDF · DOCX · PPTX · XLSX · HTML · CSV · JSON · XML · EPUB · JPG · PNG · MP3 · WAV · ZIP</div>
+      <input type="file" id="file-input" multiple
+        accept=".pdf,.pptx,.ppt,.docx,.doc,.xlsx,.xls,.jpg,.jpeg,.png,.gif,.bmp,.webp,.html,.htm,.csv,.json,.xml,.txt,.md,.epub,.zip,.wav,.mp3" />
+    </div>
+
+    <div id="file-list"></div>
+
+    <button id="convert-btn">Convert</button>
+
+    <div id="log-wrap">
+      <div id="log-label">Processing log</div>
+      <div id="log"></div>
+    </div>
+
+    <div id="download-wrap">
+      <a id="download-link">⬇ Download</a>
+      <button id="clear-btn">Clear</button>
+    </div>
+
+    <div id="status"></div>
+
+    <footer>markitdown &mdash; microsoft/markitdown &mdash; MIT license</footer>
+  </div>
+
+  <script>
+    const dropzone    = document.getElementById('dropzone');
+    const fileInput   = document.getElementById('file-input');
+    const browseLink  = document.getElementById('browse-link');
+    const fileList    = document.getElementById('file-list');
+    const convertBtn  = document.getElementById('convert-btn');
+    const logWrap     = document.getElementById('log-wrap');
+    const log         = document.getElementById('log');
+    const downloadWrap= document.getElementById('download-wrap');
+    const downloadLink= document.getElementById('download-link');
+    const clearBtn    = document.getElementById('clear-btn');
+    const status      = document.getElementById('status');
+
+    let selectedFiles = [];
+
+    browseLink.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('click', e => { if (e.target !== browseLink) fileInput.click(); });
+    fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+    dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      addFiles([...e.dataTransfer.files]);
+    });
+
+    function addFiles(incoming) {
+      incoming.forEach(f => {
+        if (!selectedFiles.find(x => x.name === f.name && x.size === f.size))
+          selectedFiles.push(f);
+      });
+      renderList();
+      fileInput.value = '';
+    }
+
+    function removeFile(i) { selectedFiles.splice(i, 1); renderList(); }
+
+    function fmtSize(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+      return (b/1048576).toFixed(1) + ' MB';
+    }
+
+    function renderList() {
+      fileList.innerHTML = '';
+      selectedFiles.forEach((f, i) => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        div.innerHTML = `
+          <span class="file-name">${f.name}</span>
+          <span class="file-size">${fmtSize(f.size)}</span>
+          <button class="remove-btn" data-i="${i}" title="Remove">&times;</button>
+        `;
+        fileList.appendChild(div);
+      });
+      fileList.querySelectorAll('.remove-btn').forEach(btn =>
+        btn.addEventListener('click', e => { e.stopPropagation(); removeFile(+btn.dataset.i); })
+      );
+      convertBtn.style.display = selectedFiles.length ? 'block' : 'none';
+      // Reset log/download on new file selection
+      logWrap.style.display = 'none';
+      downloadWrap.style.display = 'none';
+      status.textContent = '';
+      status.className = '';
+    }
+
+    function appendLog(text, cls) {
+      // Remove cursor from previous last line
+      log.querySelectorAll('.log-cursor').forEach(el => el.classList.remove('log-cursor'));
+      const line = document.createElement('div');
+      line.className = cls;
+      line.textContent = text;
+      if (cls !== 'log-error') line.classList.add('log-cursor');
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function resetAll() {
+      selectedFiles = [];
+      fileList.innerHTML = '';
+      log.innerHTML = '';
+      logWrap.style.display = 'none';
+      downloadWrap.style.display = 'none';
+      convertBtn.style.display = 'none';
+      status.textContent = '';
+      status.className = '';
+    }
+
+    clearBtn.addEventListener('click', resetAll);
+
+    convertBtn.addEventListener('click', () => {
+      if (!selectedFiles.length) return;
+
+      // Reset UI
+      log.innerHTML = '';
+      downloadWrap.style.display = 'none';
+      logWrap.style.display = 'block';
+      convertBtn.disabled = true;
+      status.className = 'status-info';
+      status.innerHTML = '<span class="spinner"></span> Uploading…';
+
+      const form = new FormData();
+      selectedFiles.forEach(f => form.append('files', f));
+
+      // Upload files; server responds with SSE stream
+      fetch('/convert', { method: 'POST', body: form })
+        .then(res => {
+          if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Upload failed'); });
+
+          status.innerHTML = '<span class="spinner"></span> Converting…';
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = '';
+
+          function read() {
+            reader.read().then(({ done, value }) => {
+              if (done) return;
+              buf += decoder.decode(value, { stream: true });
+              const parts = buf.split('\n\n');
+              buf = parts.pop(); // incomplete chunk stays in buffer
+              parts.forEach(part => {
+                if (!part.startsWith('data: ')) return;
+                const msg = part.slice(6).trim();
+                handleMessage(msg);
+              });
+              read();
+            }).catch(err => {
+              status.className = 'status-err';
+              status.textContent = '✗ Stream error: ' + err.message;
+              convertBtn.disabled = false;
+            });
+          }
+          read();
+        })
+        .catch(err => {
+          status.className = 'status-err';
+          status.textContent = '✗ ' + err.message;
+          convertBtn.disabled = false;
+        });
+    });
+
+    function handleMessage(msg) {
+      if (msg.startsWith('ERROR:')) {
+        // Remove cursors
+        log.querySelectorAll('.log-cursor').forEach(el => el.classList.remove('log-cursor'));
+        appendLog(msg, 'log-error');
+        status.className = 'status-err';
+        status.textContent = '✗ ' + msg.replace(/^ERROR:\s*/, '');
+        convertBtn.disabled = false;
+
+      } else if (msg.startsWith('DONE:')) {
+        // DONE:<token>:<filename>
+        log.querySelectorAll('.log-cursor').forEach(el => el.classList.remove('log-cursor'));
+        const parts = msg.split(':');
+        const token = parts[1];
+        const fname = parts.slice(2).join(':');
+
+        appendLog('Complete — ' + fname, 'log-done');
+
+        // Trigger download via hidden link
+        downloadLink.href = `/download/${token}`;
+        downloadLink.download = fname;
+        downloadLink.textContent = `⬇ Download ${fname}`;
+        downloadWrap.style.display = 'block';
+        downloadLink.click();
+
+        status.className = 'status-ok';
+        status.textContent = `✓ Ready: ${fname}`;
+        convertBtn.disabled = false;
+
+      } else if (msg.startsWith('[')) {
+        // Progress line: [1/3] Converting: foo.pdf  or  [1/3] Done: foo.md
+        const isDone = msg.includes('] Done:');
+        appendLog(msg, isDone ? 'log-done' : 'log-progress');
+      }
+    }
+  </script>
+</body>
+</html>
