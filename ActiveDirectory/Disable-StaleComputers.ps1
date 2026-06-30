@@ -32,9 +32,10 @@
                     with RSAT (AD DS Tools) installed.
     Requires:       ActiveDirectory module, rights to disable and move computer
                     objects in AD, and write access to the target OU.
-    Version:        1.1
+    Version:        1.2
 
 .CHANGELOG
+    1.2 - 06-29-2026 - Split try/catch per step; errors now log which step failed (Disable/Set-Description/Move) with full exception message
     1.1 - 06-29-2026 - Log filename now includes HH-mm to prevent WhatIf and live runs from appending to the same file
     1.0 - 06-29-2026 - Initial release
 
@@ -48,7 +49,7 @@
 $StaleThresholdDays = 90
 
 # Target OU for disabled computer objects.
-$TargetOU = "OU=DisabledComputers,DC=corp,DC=company,DC=com"
+$TargetOU = "OU=DisabledComputers,DC=corp,DC=domain,DC=com"
 
 # Set to $false to actually disable and move objects. Default $true = preview only.
 $WhatIf = $true
@@ -168,19 +169,32 @@ foreach ($computer in $computers) {
     try {
         # 1. Disable
         Disable-ADAccount -Identity $dn
+    } catch {
+        Write-Log "FAIL  | $name | OS: $os | PasswordLastSet: $pwdLastSet ($daysSince days) | Step: Disable | $($_.Exception.Message)" "ERROR"
+        $failed++
+        continue
+    }
 
-        # 2. Stamp description (preserves existing description in log, overwrites in AD)
+    try {
+        # 2. Stamp description
         Set-ADComputer -Identity $dn -Description $newDescription
+    } catch {
+        Write-Log "FAIL  | $name | OS: $os | PasswordLastSet: $pwdLastSet ($daysSince days) | Step: Set-Description | $($_.Exception.Message)" "ERROR"
+        $failed++
+        continue
+    }
 
+    try {
         # 3. Move
         Move-ADObject -Identity $dn -TargetPath $TargetOU
-
-        Write-Log "OK    | $name | OS: $os | PasswordLastSet: $pwdLastSet ($daysSince days) | Disabled + moved" "SUCCESS"
-        $succeeded++
     } catch {
-        Write-Log "FAIL  | $name | $_" "ERROR"
+        Write-Log "FAIL  | $name | OS: $os | PasswordLastSet: $pwdLastSet ($daysSince days) | Step: Move | $($_.Exception.Message)" "ERROR"
         $failed++
+        continue
     }
+
+    Write-Log "OK    | $name | OS: $os | PasswordLastSet: $pwdLastSet ($daysSince days) | Disabled + moved" "SUCCESS"
+    $succeeded++
 }
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
