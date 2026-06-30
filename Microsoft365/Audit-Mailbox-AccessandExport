@@ -1,0 +1,64 @@
+M365 Mailbox & License Audit — Process & Script
+
+Markley Technologies — Internal Process Doc
+
+Purpose
+
+Pulls every mailbox in a client's M365 tenant along with license status, item count, mailbox size, and sign-in activity, for identifying stale or unlicensed mailboxes that are candidates for cleanup or license reclaim.
+
+Prerequisites
+Connect-ExchangeOnline
+Connect-MgGraph -Scopes "AuditLog.Read.All","User.Read.All"
+Tenant must be on Entra ID P1 or P2 — SignInActivity does not populate on lower tiers
+PowerShell 7 recommended
+Key Design Decisions
+Decision	Reason
+Sign-in data pulled from Get-MgUser -Property SignInActivity instead of Get-EXOMailboxStatistics LastLogonTime	LastLogonTime was found to be entirely unpopulated on at least one tenant even with auditing enabled (AuditDisabled: False). Entra sign-in logs are independent of EXO mailbox auditing and proved reliable.
+Both LastSignInDateTime and LastNonInteractiveSignInDateTime captured	Interactive-only misses shared/functional mailboxes that are actively used via app/token access with no human login — would falsely flag them as dead.
+User lookup via Get-MgUser -Filter "userPrincipalName eq '...'" instead of -UserId	-UserId in this module version only accepts a GUID, not a UPN — direct UPN lookup throws a 400 error.
+SizeMB parsed via regex from TotalItemSize	TotalItemSize returns a formatted string (e.g. 27.36 MB (28,684,451 bytes)) — not sortable in Excel as-is. Byte count is extracted and converted to a plain decimal.
+Export-Csv -Append inside the loop instead of piping the whole collection at the end	Allows the CSV to be tailed live (e.g. in Notepad++) while the script runs, since one API call per mailbox makes this a long-running job on larger tenants.
+Script
+$null = New-Item -Path ".\all_mailboxes_detail.csv" -Force
+
+Get-EXOMailbox -ResultSize Unlimited | ForEach-Object {
+    Write-Host "Processing: $($_.UserPrincipalName)"
+    $user = Get-MgUser -Filter "userPrincipalName eq '$($_.UserPrincipalName)'" `
+        -Property "DisplayName,UserPrincipalName,SignInActivity,AssignedLicenses" `
+        -ErrorAction SilentlyContinue
+    $stats = Get-EXOMailboxStatistics -Identity $_.UserPrincipalName -ErrorAction SilentlyContinue
+
+    $sizeBytes = if ($stats.TotalItemSize -match '\(([0-9,]+) bytes\)') {
+        [long]($matches[1] -replace ',', '')
+    } else { 0 }
+    $sizeMB = [math]::Round($sizeBytes / 1MB, 2)
+
+    [PSCustomObject]@{
+        DisplayName              = $_.DisplayName
+        UPN                      = $_.UserPrincipalName
+        MailboxType              = $_.RecipientTypeDetails
+        HasLicense               = ($user.AssignedLicenses.Count -gt 0)
+        ItemCount                = $stats.ItemCount
+        SizeMB                   = $sizeMB
+        LastSignIn               = $user.SignInActivity.LastSignInDateTime
+        LastNonInteractiveSignIn = $user.SignInActivity.LastNonInteractiveSignInDateTime
+    } | Export-Csv -Path ".\all_mailboxes_detail.csv" -NoTypeInformation -Append
+}
+Output Columns
+Column	Description
+DisplayName / UPN	Mailbox identity
+MailboxType	RecipientTypeDetails (UserMailbox, SharedMailbox, RoomMailbox, etc.)
+HasLicense	True/False — whether the user has any assigned license
+ItemCount	Number of items in the mailbox
+SizeMB	Mailbox size in MB, plain decimal
+LastSignIn	Last interactive sign-in (human login)
+LastNonInteractiveSignIn	Last background/app/token-based access
+Known Limitations
+One Graph call + one EXO stats call per mailbox — expect 5–10+ minutes on tenants with 200+ mailboxes
+Tenants without Entra ID P1/P2 will return blank sign-in data — confirm licensing tier before running
+LastLogonTime from EXO was unreliable in testing and is intentionally not used as the primary signal
+Usage Notes
+
+Run directly against a connected tenant. For a quick validation before a full run, swap -ResultSize Unlimited for a small number (e.g. -ResultSize 20) and check the output before committing to a full pass.
+
+— Markley Technologies
