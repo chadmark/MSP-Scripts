@@ -32,9 +32,10 @@
                     with RSAT (AD DS Tools) installed.
     Requires:       ActiveDirectory module, rights to disable and move computer
                     objects in AD, and write access to the target OU.
-    Version:        1.2
+    Version:        1.3
 
 .CHANGELOG
+    1.3 - 06-29-2026 - Pre-check: already-disabled accounts in target OU logged as SKIP not FAIL
     1.2 - 06-29-2026 - Split try/catch per step; errors now log which step failed (Disable/Set-Description/Move) with full exception message
     1.1 - 06-29-2026 - Log filename now includes HH-mm to prevent WhatIf and live runs from appending to the same file
     1.0 - 06-29-2026 - Initial release
@@ -151,9 +152,14 @@ foreach ($computer in $computers) {
                   } else { "N/A" }
     $os         = $computer.OperatingSystem
 
-    # Skip if already in the target OU (shouldn't happen since we filtered Enabled, but safety check)
-    if ($dn -like "*$TargetOU*") {
-        Write-Log "SKIP  | $name — already in target OU" "WARN"
+    # Skip if already disabled and already in the target OU — end state is correct, nothing to do.
+    # Also catches accounts that were pre-disabled before the script ran (e.g. manually disabled
+    # but not yet moved), which would cause Disable-ADAccount to throw even though the intent is met.
+    $alreadyInTargetOU = $dn -like "*$TargetOU*"
+    $alreadyDisabled   = -not $computer.Enabled
+
+    if ($alreadyDisabled -and $alreadyInTargetOU) {
+        Write-Log "SKIP  | $name — already disabled and in target OU" "WARN"
         $skipped++
         continue
     }
