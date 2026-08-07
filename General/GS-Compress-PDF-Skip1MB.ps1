@@ -33,12 +33,12 @@
     gswin64c --version
 
 .NOTES
-    Author      : Chad Mark
-    Last Edit   : 2026-03-25
-    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/General/GS-Compress-PDF-Skip1MB.ps1
-    Environment : Windows 10/11
-    Requires    : PowerShell 5.1+, Ghostscript (gswin64c.exe in system PATH)
-    Version     : 1.0
+    Author        : Chad Mark
+    Last Edit     : 08-07-2026
+    GitHub        : https://github.com/chadmark/MSP-Scripts/blob/main/General/GS-Compress-PDF-Skip1MB.ps1
+    Environment   : Windows 10/11
+    Requires      : PowerShell 5.1+, Ghostscript (gswin64c.exe in system PATH)
+    Version       : 1.1
 
     PDFSETTINGSPresets:
       /screen   - 72 DPI  — smallest size, screen only
@@ -50,6 +50,18 @@
       Download from https://www.ghostscript.com/releases/gsdnld.html
       Install the 64-bit version and ensure gswin64c.exe is in your system PATH.
       Verify with: gswin64c --version
+
+.CHANGELOG
+    1.0 - 03-25-2026 - Initial creation: recursive PDF compression via Ghostscript,
+                        in-place with temp file, skip files under 1MB.
+    1.1 - 08-07-2026 - Fixed -sOutputFile argument quoting. Previously only the
+                        value was quoted (-sOutputFile="$TempFile"), which could
+                        get mangled by PowerShell's native-arg quoting when the
+                        path contained spaces, causing Ghostscript to fail with
+                        "Device 'pdfwrite' requires an output file but no file
+                        was specified." Now the whole argument is quoted
+                        ("-sOutputFile=$TempFile"), matching the pattern already
+                        used for -dPDFSETTINGS.
 
 .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -74,7 +86,6 @@ $PDFSettings = '/ebook'
 # ---------------------------------------------------------------------------
 
 Get-ChildItem -Path . -Filter *.pdf -Recurse | ForEach-Object {
-
     # Skip files under the minimum size threshold
     if ($_.Length -lt $MinFileSize) {
         Write-Host "Skipped (too small): $($_.FullName)" -ForegroundColor Yellow
@@ -91,7 +102,7 @@ Get-ChildItem -Path . -Filter *.pdf -Recurse | ForEach-Object {
       -dNOPAUSE `
       -dQUIET `
       -dBATCH `
-      -sOutputFile="$TempFile" `
+      "-sOutputFile=$TempFile" `
       "$InputFile"
 
     if ($LASTEXITCODE -ne 0) {
