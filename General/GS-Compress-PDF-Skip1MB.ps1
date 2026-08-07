@@ -3,18 +3,16 @@
     Recursively compresses PDF files in the current directory using Ghostscript.
 
 .DESCRIPTION
-    Walks through the current directory and all subdirectories, finding PDF files
-    and compressing them in place using Ghostscript. Files under 1MB are skipped
-    to avoid processing already-optimized documents.
-
-    Because Ghostscript cannot overwrite a file in place, each file is written
-    to a temporary file first, then moved over the original on success. If
-    Ghostscript fails, the temp file is removed and the original is preserved.
-
-    Ghostscript 10.x runs with SAFER sandboxing enabled by default, which can
-    block reads/writes on mapped network drives even when NTFS permissions are
-    fine. --permit-file-read / --permit-file-write are passed for the current
-    working directory (and everything under it) to explicitly allow this.
+    Features:
+      - Recursively scans the current directory and all subdirectories for PDF files
+      - Skips files under 1MB (already-optimized, not worth reprocessing)
+      - Compresses via Ghostscript to a temp file, then moves it over the original
+        only on success — originals are never touched if compression fails
+      - Passes --permit-file-read / --permit-file-write scoped to the working
+        directory to work around Ghostscript's SAFER sandbox blocking writes to
+        mapped network drives
+      - Optional -ShowCommand switch prints the exact gswin64c invocation for
+        each file, useful for troubleshooting without cluttering normal runs
 
     Output quality is controlled by the -dPDFSETTINGS preset:
       /screen   -  72 DPI, smallest file size, screen viewing only
@@ -22,17 +20,29 @@
       /printer  - 300 DPI, suitable for printing
       /prepress - 300 DPI, high quality with color preservation
 
-.PARAMETER None
-    No parameters. Run from the root directory you want to process.
+.PARAMETER ShowCommand
+    Switch. When specified, prints the full gswin64c command line (including
+    the permit-file flags, quality preset, and file paths) to the console
+    before running it, for each PDF processed. Off by default so normal runs
+    stay quiet. Useful when diagnosing a failure — compare the printed command
+    against whatever error Ghostscript reports back.
+
+    Named ShowCommand rather than using PowerShell's built-in -Debug common
+    parameter, because -Debug pauses with a Continue/Halt/Suspend prompt on
+    every Write-Debug call — impractical when looping over many files.
 
 .EXAMPLE
-    # Navigate to your target directory first, then run:
+    # Normal run — quiet, no diagnostic output:
     PS C:\Documents> .\GS-Compress-PDF-Skip1MB.ps1
 
 .EXAMPLE
-    # Run against a specific path by changing directory first:
+    # Run with diagnostics — prints each gswin64c command as it executes:
+    PS C:\Documents> .\GS-Compress-PDF-Skip1MB.ps1 -ShowCommand
+
+.EXAMPLE
+    # Run against a specific network path, with diagnostics on:
     cd "M:\Yearly-STMTS\2020\Maribel"
-    & "C:\scripts\GS-Compress-PDF-Skip1MB.ps1"
+    & "C:\scripts\GS-Compress-PDF-Skip1MB.ps1" -ShowCommand
 
 .EXAMPLE
     # Verify Ghostscript is installed and accessible:
@@ -44,7 +54,7 @@
     GitHub        : https://github.com/chadmark/MSP-Scripts/blob/main/General/GS-Compress-PDF-Skip1MB.ps1
     Environment   : Windows 10/11
     Requires      : PowerShell 5.1+, Ghostscript (gswin64c.exe in system PATH)
-    Version       : 1.2
+    Version       : 1.3
 
     PDFSETTINGSPresets:
       /screen   - 72 DPI  — smallest size, screen only
@@ -57,23 +67,13 @@
       Install the 64-bit version and ensure gswin64c.exe is in your system PATH.
       Verify with: gswin64c --version
 
-.CHANGELOG
-    1.0 - 03-25-2026 - Initial creation: recursive PDF compression via Ghostscript,
-                        in-place with temp file, skip files under 1MB.
-    1.1 - 08-07-2026 - Fixed -sOutputFile argument quoting (embedded literal quotes
-                        instead of relying on PowerShell auto-quoting).
-    1.2 - 08-07-2026 - Added --permit-file-read / --permit-file-write scoped to the
-                        current directory. Root cause of "Could not open the file" /
-                        "Unable to open the initial device" errors on mapped network
-                        drives (M:\) was Ghostscript 10.x's default SAFER sandbox
-                        blocking file writes there, not a permissions or quoting
-                        issue. Confirmed working against a live network-share
-                        folder. Removed temporary CMD debug line used during
-                        troubleshooting.
-
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
+
+param(
+    [switch]$ShowCommand
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -116,6 +116,10 @@ Get-ChildItem -Path . -Filter *.pdf -Recurse | ForEach-Object {
         "-sOutputFile=`"$TempFile`""
         "`"$InputFile`""
     )
+
+    if ($ShowCommand) {
+        Write-Host "CMD: gswin64c $($gsArgs -join ' ')" -ForegroundColor DarkGray
+    }
 
     & gswin64c $gsArgs
 
