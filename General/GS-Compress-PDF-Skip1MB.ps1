@@ -11,6 +11,11 @@
     to a temporary file first, then moved over the original on success. If
     Ghostscript fails, the temp file is removed and the original is preserved.
 
+    Ghostscript 10.x runs with SAFER sandboxing enabled by default, which can
+    block reads/writes on mapped network drives even when NTFS permissions are
+    fine. --permit-file-read / --permit-file-write are passed for the current
+    working directory (and everything under it) to explicitly allow this.
+
     Output quality is controlled by the -dPDFSETTINGS preset:
       /screen   -  72 DPI, smallest file size, screen viewing only
       /ebook    - 150 DPI, good balance of size and quality (default)
@@ -25,8 +30,9 @@
     PS C:\Documents> .\GS-Compress-PDF-Skip1MB.ps1
 
 .EXAMPLE
-    # Run against a specific path by changing the -Path value in the script:
-    -Path "C:\ClientDocuments"
+    # Run against a specific path by changing directory first:
+    cd "M:\Yearly-STMTS\2020\Maribel"
+    & "C:\scripts\GS-Compress-PDF-Skip1MB.ps1"
 
 .EXAMPLE
     # Verify Ghostscript is installed and accessible:
@@ -38,7 +44,7 @@
     GitHub        : https://github.com/chadmark/MSP-Scripts/blob/main/General/GS-Compress-PDF-Skip1MB.ps1
     Environment   : Windows 10/11
     Requires      : PowerShell 5.1+, Ghostscript (gswin64c.exe in system PATH)
-    Version       : 1.1
+    Version       : 1.2
 
     PDFSETTINGSPresets:
       /screen   - 72 DPI  — smallest size, screen only
@@ -54,14 +60,16 @@
 .CHANGELOG
     1.0 - 03-25-2026 - Initial creation: recursive PDF compression via Ghostscript,
                         in-place with temp file, skip files under 1MB.
-    1.1 - 08-07-2026 - Fixed -sOutputFile argument quoting. Previously only the
-                        value was quoted (-sOutputFile="$TempFile"), which could
-                        get mangled by PowerShell's native-arg quoting when the
-                        path contained spaces, causing Ghostscript to fail with
-                        "Device 'pdfwrite' requires an output file but no file
-                        was specified." Now the whole argument is quoted
-                        ("-sOutputFile=$TempFile"), matching the pattern already
-                        used for -dPDFSETTINGS.
+    1.1 - 08-07-2026 - Fixed -sOutputFile argument quoting (embedded literal quotes
+                        instead of relying on PowerShell auto-quoting).
+    1.2 - 08-07-2026 - Added --permit-file-read / --permit-file-write scoped to the
+                        current directory. Root cause of "Could not open the file" /
+                        "Unable to open the initial device" errors on mapped network
+                        drives (M:\) was Ghostscript 10.x's default SAFER sandbox
+                        blocking file writes there, not a permissions or quoting
+                        issue. Confirmed working against a live network-share
+                        folder. Removed temporary CMD debug line used during
+                        troubleshooting.
 
 .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -92,18 +100,24 @@ Get-ChildItem -Path . -Filter *.pdf -Recurse | ForEach-Object {
         return
     }
 
-    $InputFile = $_.FullName
-    $TempFile  = "$($_.DirectoryName)\temp_$($_.Name)"
+    $InputFile  = $_.FullName
+    $TempFile   = "$($_.DirectoryName)\temp_$($_.Name)"
+    $PermitPath = "$((Get-Location).Path)\*"
 
-    gswin64c `
-      -sDEVICE=pdfwrite `
-      -dCompatibilityLevel=1.4 `
-      "-dPDFSETTINGS=$PDFSettings" `
-      -dNOPAUSE `
-      -dQUIET `
-      -dBATCH `
-      "-sOutputFile=$TempFile" `
-      "$InputFile"
+    $gsArgs = @(
+        "--permit-file-read=$PermitPath"
+        "--permit-file-write=$PermitPath"
+        '-sDEVICE=pdfwrite'
+        '-dCompatibilityLevel=1.4'
+        "-dPDFSETTINGS=$PDFSettings"
+        '-dNOPAUSE'
+        '-dQUIET'
+        '-dBATCH'
+        "-sOutputFile=`"$TempFile`""
+        "`"$InputFile`""
+    )
+
+    & gswin64c $gsArgs
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED: $InputFile" -ForegroundColor Red
