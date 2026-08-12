@@ -1,70 +1,66 @@
 <#
 .SYNOPSIS
     Recursively resizes JPG images in the current directory using ImageMagick.
-
 .DESCRIPTION
     Walks through the current directory and all subdirectories, finding JPG files
     and resizing them in place using ImageMagick. Files under 1MB are skipped to
     avoid processing already-optimized images. Outputs are written back to the
     original file path, overwriting the source file.
-
     ImageMagick settings are tuned for a balance of quality and file size:
       - Resizes to a maximum of 2048x2048 while preserving aspect ratio
       - Skips enlarging images that are already smaller than the target
       - Uses 4:4:4 chroma sampling to retain full color detail
       - Strips embedded metadata (EXIF, ICC, comments) to reduce file size
       - Suppresses non-fatal JPEG warnings (e.g. extraneous bytes) with -quiet
-
 .PARAMETER None
     No parameters. Run from the root directory you want to process.
-
 .EXAMPLE
     # Navigate to your target directory first, then run:
     PS C:\Photos> .\Resize-JPG-Images.ps1
-
 .EXAMPLE
     # Run against a specific path by changing the -Path value in the script:
     -Path "C:\ClientPhotos"
-
 .NOTES
     Author      : Chad Mark
-    Last Edit   : 2026-03-25
+    Last Edit   : 08-06-2026
     GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/General/Magick-Resize-JPG-Images-Skip1MB.ps1
     Environment : Windows 10/11
     Requires    : PowerShell 5.1+, ImageMagick (magick.exe in system PATH)
-    Version     : 1.0
-
+    Version     : 1.1
+    Setup       : If scripts are blocked from running, set the execution policy
+                  once per user (not inside this script):
+                  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+                  Alternatively, run this script without changing policy:
+                  powershell -ExecutionPolicy Bypass -File .\Magick-Resize-JPG-Images-Skip1MB.ps1
+                  If downloaded from GitHub, the file may also carry the
+                  Mark-of-the-Web flag, which blocks execution independently
+                  of policy. Unblock it first: Unblock-File .\Magick-Resize-JPG-Images-Skip1MB.ps1
+.CHANGELOG
+    1.0 - 03-25-2026 - Initial version
+    1.1 - 08-06-2026 - Added Setup note for execution policy / Unblock-File guidance
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
 # Minimum file size to process. Files smaller than this will be skipped.
 # Supports PowerShell size literals: KB, MB, GB
 $MinFileSize = 1MB
-
 # Target resolution. The ">" suffix means only shrink, never enlarge.
 # Aspect ratio is always preserved.
 $TargetResolution = '2048x2048>'
-
 # JPEG output quality (1-100). Higher = better quality, larger file.
 $JpegQuality = 88
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
 Get-ChildItem -Path . -Filter *.jpg -Recurse | ForEach-Object {
-
     # Skip files under the minimum size threshold
     if ($_.Length -lt $MinFileSize) {
         Write-Host "Skipped (too small): $($_.FullName)" -ForegroundColor Yellow
         return
     }
-
     magick -quiet $_.FullName `
       -filter Triangle `
       -define filter:support=2 `
@@ -79,7 +75,6 @@ Get-ChildItem -Path . -Filter *.jpg -Recurse | ForEach-Object {
       -strip `
       -colorspace sRGB `
       $_.FullName
-
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED: $($_.FullName)" -ForegroundColor Red
     } else {
