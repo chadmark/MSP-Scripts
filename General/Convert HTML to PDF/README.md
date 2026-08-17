@@ -213,15 +213,21 @@ Package 'libgdk-pixbuf2.0-0' has no installation candidate
 
 ---
 
-## 7. Save the HTML-to-PDF Script
+## 7. Download the HTML-to-PDF Script
 
-Create:
+The current version of the conversion script is maintained in the same GitHub repository directory as this README:
+
+**Script:** [html_to_pdf_bookmarks.py](https://github.com/chadmark/MSP-Scripts/blob/main/General/Convert%20HTML%20to%20PDF/html_to_pdf_bookmarks.py)
+
+**Direct download:** [Download the raw Python script](https://raw.githubusercontent.com/chadmark/MSP-Scripts/main/General/Convert%20HTML%20to%20PDF/html_to_pdf_bookmarks.py)
+
+If you are cloning the entire `MSP-Scripts` repository, the script is located at:
 
 ```text
-html_to_pdf_bookmarks.py
+General/Convert HTML to PDF/html_to_pdf_bookmarks.py
 ```
 
-with the following contents:
+The complete script is also included below for reference:
 
 ```python
 #!/usr/bin/env python3
@@ -699,6 +705,10 @@ sudo apt-get update && sudo apt-get install -y \
 ```
 
 ### Each Book
+
+The converter script is available here:
+
+[html_to_pdf_bookmarks.py](https://github.com/chadmark/MSP-Scripts/blob/main/General/Convert%20HTML%20to%20PDF/html_to_pdf_bookmarks.py)
 
 1. Open the book normally in the Perlego reader.
 2. Run the Chrome extension.
