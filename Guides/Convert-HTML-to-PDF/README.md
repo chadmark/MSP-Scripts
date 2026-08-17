@@ -217,14 +217,14 @@ Package 'libgdk-pixbuf2.0-0' has no installation candidate
 
 The current version of the conversion script is maintained in the same GitHub repository directory as this README:
 
-**Script:** [html_to_pdf_bookmarks.py](https://github.com/chadmark/MSP-Scripts/blob/main/General/Convert%20HTML%20to%20PDF/html_to_pdf_bookmarks.py)
+**Script:** [html_to_pdf_bookmarks.py](https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Convert-HTML-to-PDF/html_to_pdf_bookmarks.py)
 
-**Direct download:** [Download the raw Python script](https://raw.githubusercontent.com/chadmark/MSP-Scripts/main/General/Convert%20HTML%20to%20PDF/html_to_pdf_bookmarks.py)
+**Direct download:** [Download the raw Python script](https://raw.githubusercontent.com/chadmark/MSP-Scripts/main/Guides/Convert-HTML-to-PDF/html_to_pdf_bookmarks.py)
 
 If you are cloning the entire `MSP-Scripts` repository, the script is located at:
 
 ```text
-General/Convert HTML to PDF/html_to_pdf_bookmarks.py
+Guides/Convert-HTML-to-PDF/html_to_pdf_bookmarks.py
 ```
 
 The complete script is also included below for reference:
@@ -288,7 +288,7 @@ The complete script is also included below for reference:
 .NOTES
     Author        : Chad Mark
     Last Edit     : 08-17-2026
-    GitHub        : https://github.com/chadmark/MSP-Scripts/blob/main/General/html_to_pdf_bookmarks.py
+    GitHub        : https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Convert-HTML-to-PDF/html_to_pdf_bookmarks.py
     Environment   : Linux / Ubuntu with Python 3
     Requires      : Python 3.10+, WeasyPrint, BeautifulSoup4
     Version       : 1.0
@@ -708,7 +708,7 @@ sudo apt-get update && sudo apt-get install -y \
 
 The converter script is available here:
 
-[html_to_pdf_bookmarks.py](https://github.com/chadmark/MSP-Scripts/blob/main/General/Convert%20HTML%20to%20PDF/html_to_pdf_bookmarks.py)
+[html_to_pdf_bookmarks.py](https://github.com/chadmark/MSP-Scripts/blob/main/Guides/Convert-HTML-to-PDF/html_to_pdf_bookmarks.py)
 
 1. Open the book normally in the Perlego reader.
 2. Run the Chrome extension.
