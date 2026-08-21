@@ -88,7 +88,7 @@ Create these as script variables when uploading to NinjaOne. Names must match ex
 
 ## NinjaOne script variables — configured
 
-![NinjaOne script variables panel showing Randomize Start Delay, Suspend BitLocker and Reboot If Needed, Install DCU And Required DotNet Runtime If Needed, Skip Application Updates, Destination Folder Path, Sort Updates By, Dell Updates, and Dell Updates List](assets/ninja-script-variables.png)
+![NinjaOne script variables panel showing Randomize Start Delay, Suspend BitLocker and Reboot If Needed, Install DCU And Required DotNet Runtime If Needed, Skip Application Updates, Destination Folder Path, Sort Updates By, Dell Updates, and Dell Updates List](./ninja-script-variables.png)
 
 ## Sample successful run (test device, DCU not previously installed)
 
