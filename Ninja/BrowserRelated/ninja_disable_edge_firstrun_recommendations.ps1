@@ -16,7 +16,7 @@
 .NOTES
     Author      : Chad
     Last Edit   : 08-21-2026
-    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_disable_edge_firstrun_recommendations.ps1
+    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/BrowserRelated/ninja_disable_edge_firstrun_recommendations.ps1
     Environment : Windows endpoints with Microsoft Edge installed
     Requires    : Local admin rights (writes to HKLM)
     Version     : 1.0
