@@ -41,6 +41,9 @@
          (Get-Mailbox user@domain.com | Select RetentionPolicy) - an age
          limit longer than the mailbox's actual mail history means nothing
          has qualified to move yet.
+      7. Use -ExportPath and/or -HtmlPath if you need a saved artifact
+         instead of (or in addition to) the console output - e.g. for
+         attaching to a ticket or documenting a before/after.
 
     Does not modify anything - read-only reporting.
 
@@ -53,7 +56,16 @@
 
 .PARAMETER ExportPath
     Optional path to export the full primary mailbox folder breakdown as
-    CSV (all folders, not just the Top N shown on screen).
+    CSV (all folders, not just the Top N shown on screen). Primary
+    mailbox folders only - does not include Overview or Archive data.
+
+.PARAMETER HtmlPath
+    Optional path to export a single formatted HTML report covering every
+    section shown on screen - Mailbox Overview, Recoverable Items, Online
+    Archive quota/usage (if enabled), Top N Archive folders, and Top N
+    primary mailbox folders. Useful for attaching to a ticket or saving
+    as a client-facing artifact. Independent of -ExportPath - use either,
+    both, or neither.
 
 .EXAMPLE
     .\Get-MailboxSizeAudit.ps1 -Identity user@domain.com
@@ -61,18 +73,29 @@
 .EXAMPLE
     .\Get-MailboxSizeAudit.ps1 -Identity user@domain.com -ExportPath C:\temp\user-mailbox-audit.csv
 
+.EXAMPLE
+    .\Get-MailboxSizeAudit.ps1 -Identity user@domain.com -HtmlPath C:\temp\user-mailbox-audit.html
+
+.EXAMPLE
+    .\Get-MailboxSizeAudit.ps1 -Identity user@domain.com -ExportPath C:\temp\user-mailbox-audit.csv -HtmlPath C:\temp\user-mailbox-audit.html
+
 .NOTES
     Author      : Chad
     Last Edit   : 08-28-2026
     GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Microsoft365/Get-MailboxSizeAudit.ps1
     Environment : Exchange Online (EXO V3 module)
     Requires    : ExchangeOnlineManagement module; active session via Connect-Client.ps1
-    Version     : 1.0
+    Version     : 1.1
 
 .CHANGELOG
     1.0 - 08-28-2026 - Initial version. Validated against a live client
                        mailbox that surfaced an untouched 4-year retention
                        tag as the root cause of primary mailbox fullness.
+    1.1 - 08-28-2026 - Added -HtmlPath parameter to export a single
+                       formatted HTML report (Overview, Recoverable Items,
+                       Online Archive, and Top N folder breakdowns) in
+                       addition to the existing -ExportPath CSV option.
+                       Validated against a live client mailbox.
 
 .LINK
     https://github.com/chadmark/MSP-Scripts/tree/main/Microsoft365
@@ -84,7 +107,9 @@ param(
 
     [int]$TopFolders = 25,
 
-    [string]$ExportPath
+    [string]$ExportPath,
+
+    [string]$HtmlPath
 )
 
 function Convert-EWSSizeToBytes {
@@ -101,7 +126,7 @@ try {
     $stats = Get-MailboxStatistics -Identity $Identity
     $mbx   = Get-Mailbox -Identity $Identity
 
-    [PSCustomObject]@{
+    $overviewObj = [PSCustomObject]@{
         DisplayName           = $mbx.DisplayName
         TotalItemSize         = $stats.TotalItemSize
         ItemCount             = $stats.ItemCount
@@ -111,7 +136,8 @@ try {
         AutoExpandingArchive  = $mbx.AutoExpandingArchiveEnabled
         LitigationHold        = $mbx.LitigationHoldEnabled
         InPlaceHolds          = if ($mbx.InPlaceHolds) { $mbx.InPlaceHolds -join '; ' } else { 'None' }
-    } | Format-List
+    }
+    $overviewObj | Format-List
 }
 catch {
     Write-Host "Failed to pull mailbox stats: $_" -ForegroundColor Red
@@ -121,14 +147,16 @@ catch {
 Write-Host "=== Recoverable Items (separate quota - dumpster/hold storage) ===" -ForegroundColor Cyan
 try {
     $recoverable = Get-MailboxFolderStatistics -Identity $Identity -FolderScope RecoverableItems -IncludeOldestAndNewestItems
-    $recoverable | ForEach-Object {
+    $recoverableParsed = $recoverable | ForEach-Object {
         [PSCustomObject]@{
             Folder    = $_.FolderPath
             ItemCount = $_.ItemsInFolder
             SizeBytes = Convert-EWSSizeToBytes $_.FolderSize
             SizeHR    = $_.FolderSize
         }
-    } | Sort-Object SizeBytes -Descending | Format-Table -AutoSize
+    } | Sort-Object SizeBytes -Descending
+
+    $recoverableParsed | Format-Table -AutoSize
 }
 catch {
     Write-Host "Could not pull Recoverable Items stats: $_" -ForegroundColor Yellow
@@ -139,13 +167,14 @@ if ($mbx.ArchiveStatus -ne 'None') {
     try {
         $archiveStats = Get-MailboxStatistics -Identity $Identity -Archive
 
-        [PSCustomObject]@{
+        $archiveOverviewObj = [PSCustomObject]@{
             ArchiveTotalItemSize = $archiveStats.TotalItemSize
             ArchiveItemCount     = $archiveStats.ItemCount
             ArchiveQuota         = $mbx.ArchiveQuota
             ArchiveWarningQuota  = $mbx.ArchiveWarningQuota
             AutoExpandingArchive = $mbx.AutoExpandingArchiveEnabled
-        } | Format-List
+        }
+        $archiveOverviewObj | Format-List
 
         if (-not $mbx.AutoExpandingArchiveEnabled) {
             Write-Host "AutoExpandingArchive is DISABLED. This is the likely cause of the archive filling up." -ForegroundColor Yellow
@@ -160,7 +189,7 @@ if ($mbx.ArchiveStatus -ne 'None') {
     try {
         $archiveFolderStats = Get-MailboxFolderStatistics -Identity $Identity -Archive -IncludeOldestAndNewestItems -FolderScope All
 
-        $archiveFolderStats | ForEach-Object {
+        $archiveFolderParsed = $archiveFolderStats | ForEach-Object {
             [PSCustomObject]@{
                 FolderPath      = $_.FolderPath
                 ItemsInFolder   = $_.ItemsInFolder
@@ -169,7 +198,9 @@ if ($mbx.ArchiveStatus -ne 'None') {
                 OldestItemDate  = $_.OldestItemReceivedDate
                 NewestItemDate  = $_.NewestItemReceivedDate
             }
-        } | Sort-Object FolderSizeBytes -Descending | Select-Object -First $TopFolders |
+        } | Sort-Object FolderSizeBytes -Descending
+
+        $archiveFolderParsed | Select-Object -First $TopFolders |
             Format-Table FolderPath, ItemsInFolder, FolderSizeHR, OldestItemDate, NewestItemDate -AutoSize
     }
     catch {
@@ -209,3 +240,53 @@ catch {
 Write-Host "`nNext step: for the top offending folder(s), run a targeted compliance search" -ForegroundColor Cyan
 Write-Host "(e.g. New-ComplianceSearch) scoped to this mailbox with a size filter like" -ForegroundColor Cyan
 Write-Host "'size>26214400' (25MB) to pinpoint individual large items for cleanup." -ForegroundColor Cyan
+
+if ($HtmlPath) {
+    $css = @"
+<style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 12pt; color: #222; margin: 30px; }
+    h1 { color: #1F4E4C; font-size: 20pt; margin-bottom: 0; }
+    .generated { color: #666; font-size: 12pt; margin-top: 4px; margin-bottom: 30px; }
+    h2 { color: #1F4E4C; font-size: 15pt; border-bottom: 2px solid #1F4E4C; padding-bottom: 4px; margin-top: 35px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 15px; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 12pt; }
+    th { background-color: #1F4E4C; color: #fff; }
+    tr:nth-child(even) { background-color: #f5f5f5; }
+    .note { font-size: 12pt; }
+    .warn { color: #b8860b; font-weight: bold; }
+</style>
+"@
+
+    $body = "<h1>Mailbox Size Audit</h1><p class='generated'>$Identity &mdash; Generated $(Get-Date -Format 'MM-dd-yyyy hh:mm tt')</p>"
+
+    $body += $overviewObj | ConvertTo-Html -Fragment -PreContent "<h2>Mailbox Overview</h2>" | Out-String
+
+    $body += $recoverableParsed | Select-Object Folder, ItemCount, SizeHR |
+        ConvertTo-Html -Fragment -PreContent "<h2>Recoverable Items</h2>" | Out-String
+
+    if ($mbx.ArchiveStatus -ne 'None') {
+        $body += $archiveOverviewObj | ConvertTo-Html -Fragment -PreContent "<h2>Online Archive: Quota &amp; Usage</h2>" | Out-String
+
+        if (-not $mbx.AutoExpandingArchiveEnabled) {
+            $body += "<p class='warn'>AutoExpandingArchive is DISABLED. This is the likely cause of the archive filling up. " +
+                     "Fix: Enable-Mailbox -Identity $Identity -AutoExpandingArchive</p>"
+        }
+
+        if ($archiveFolderParsed) {
+            $body += $archiveFolderParsed | Select-Object -First $TopFolders FolderPath, ItemsInFolder, FolderSizeHR, OldestItemDate, NewestItemDate |
+                ConvertTo-Html -Fragment -PreContent "<h2>Top $TopFolders Archive Folders by Size</h2>" | Out-String
+        }
+    }
+    else {
+        $body += "<h2>Online Archive</h2><p class='note'>No Online Archive is enabled for this mailbox.</p>"
+    }
+
+    if ($parsed) {
+        $body += $parsed | Select-Object -First $TopFolders FolderPath, ItemsInFolder, FolderSizeHR, OldestItemDate, NewestItemDate |
+            ConvertTo-Html -Fragment -PreContent "<h2>Top $TopFolders Primary Mailbox Folders by Size</h2>" | Out-String
+    }
+
+    ConvertTo-Html -Head $css -Body $body -Title "Mailbox Size Audit - $Identity" | Out-File -FilePath $HtmlPath -Encoding utf8
+
+    Write-Host "`nHTML report written to $HtmlPath" -ForegroundColor Green
+}
