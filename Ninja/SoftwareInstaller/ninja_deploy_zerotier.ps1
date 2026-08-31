@@ -30,7 +30,7 @@
 .NOTES
     Author:         Chad
     Last Edit:      08-31-2026
-    GitHub:         MSP-Scripts/ninjaone/ninja_deploy_zerotier.ps1
+    GitHub:         MSP-Scripts/Ninja/SoftwareInstaller/ninja_deploy_zerotier.ps1
     Environment:    Windows 10/11, NinjaOne RMM (SYSTEM context)
     Requires:       Administrator/SYSTEM privileges; ZeroTier MSI reachable locally or via URL
     Version:        1.0
