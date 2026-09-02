@@ -80,6 +80,9 @@ Use **Apple Configurator** — either the iPhone app (NFC/Bluetooth pairing) or 
 
 ## 6. Enroll the Device (the live test)
 
+⚠️ **If this device already has data on it (not a true out-of-box unit), back it up before erasing** — either a local backup (Finder/iTunes on a Mac/PC) or an iCloud backup (Settings → [Name] → iCloud → iCloud Backup → Back Up Now), taken under whichever Apple ID the end user wants to restore from. This is a one-time opportunity — once you erase, the only way back is that backup.
+
+0. Confirm a current backup exists before erasing, if the device isn't already blank/new.
 1. Ensure any **stale/old device record** in NinjaOne (e.g., from a prior manual/unsupervised enrollment attempt) is deleted first — a lingering record can conflict with a clean ADE re-enrollment.
 2. On the device: **Settings → General → Transfer or Reset iPhone → Erase All Content and Settings.**
 3. Let it reboot to language/region selection **only** — do not sign into anything, scan any QR code, or tap any enrollment link.
@@ -90,6 +93,25 @@ Use **Apple Configurator** — either the iPhone app (NFC/Bluetooth pairing) or 
 6. After setup completes, verify:
    - **On device:** Settings → General → VPN & Device Management shows the enrollment profile, device is Supervised.
    - **In NinjaOne:** device shows **Company Owned** (not "Personally Owned") and **Supervised** (not "Unsupervised"). "Personally Owned" after a supposedly-ADE enrollment means it actually enrolled through an unsupervised/manual path — redo the erase, making sure nothing manual touches the device in between.
+
+### 6a. Restoring Data After Enrollment (if a backup was taken)
+
+If the device had a prior backup, data can be restored **during this same Setup Assistant run**, right after the Remote Management screen:
+
+Continue through Setup Assistant to the **"Apps & Data"** screen
+    ↓
+Choose **Restore from iCloud Backup** (or Restore from Mac or PC, for a local backup)
+    ↓
+Sign in with the **same Apple ID** used to create the backup — required, no way around it
+    ↓
+Restore proceeds — apps, settings, photos (if not already synced to iCloud Photos), messages, etc. all return
+
+**Things to know before doing this:**
+
+- **Check the ADE profile's Skip Setup Items first** (Section 3) — if the "Restore"/Apps & Data screen is set to skip, no restore option will be offered at all, and the device will just set up as new. Adjust that setting and re-erase if you need the restore option available.
+- **Supervision/MDM status is NOT inherited from the backup.** Even if the old backup came from a differently-managed (or unmanaged) device, the new device's supervision and enrollment are applied fresh from your ADE profile config — restoring data won't undo or interfere with the ADE enrollment that already happened.
+- **Apple's wireless "Quick Start" (phone-to-phone) transfer is NOT supported for ADE-enrolled devices** and will fail or behave unpredictably. iCloud or local (Finder/iTunes) backup restore is the only supported path for moving data onto a device going through ADE.
+- **Personal vs. managed Apple ID flag:** if the backup is under the employee's *personal* Apple ID, that personal ID gets signed into iCloud on the device as part of the restore. Decide upfront whether that's acceptable for this client/device, or whether the user should set up fresh and reinstall/re-sign-in manually instead — this ties directly into the device-control/offboarding considerations in Section 9.
 
 ---
 
