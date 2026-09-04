@@ -13,7 +13,8 @@ This workflow uses the **GladistonXD/perlego-download** Chrome extension to auto
 
 ### Sources
 
-- Chrome extension: https://github.com/GladistonXD/perlego-download
+- Chrome extension Original: https://github.com/GladistonXD/perlego-download
+- Chrome Extension local Fork: https://github.com/chadmark/perlego-download
 - Extension README: https://github.com/GladistonXD/perlego-download/blob/main/README.md
 - Manual Chrome extension installation guide: https://dev.to/ben/how-to-install-chrome-extensions-manually-from-github-1612
 - WeasyPrint: https://weasyprint.org/
