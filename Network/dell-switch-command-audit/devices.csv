@@ -1,0 +1,3 @@
+hostname,ip,device_type
+switch1-hostname,10.0.0.1,dell_force10
+switch2-hostname,10.0.0.2,dell_force10
