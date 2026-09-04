@@ -48,8 +48,10 @@ show ip interface brief
 show ip route
 show vlan brief
 show spanning-tree
+show spanning-tree brief
 show lldp neighbors detail
 show vlt brief
+show vlt all
 show inventory media
 ```
 
