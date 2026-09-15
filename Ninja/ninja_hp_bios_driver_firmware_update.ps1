@@ -10,14 +10,20 @@
     automatically restart if any installation requires it. Working files and logs are
     stored under C:\temp\BrightFlow\HPIA.
 .NOTES
-    Author          : Chad
-    Original Author : bf-ryanalexander
-    Last Edit       : 05-06-2026
-    GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_HP-HPIA-Update.ps1
-    Original Link   : https://github.com/bf-ryanalexander/Scripts/blob/main/Update-HPDrivers.ps1
-    Environment     : NinjaOne RMM — runs as SYSTEM on domain-joined HP endpoints
-    Requires        : Internet access to ftp.ext.hp.com and hpia.hpcloud.hp.com
-    Version         : 1.2
+    Author      : Chad
+    Last Edit   : 05-06-2026
+    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_hp_bios_driver_firmware_update.ps1
+    Environment : NinjaOne RMM — runs as SYSTEM on domain-joined HP endpoints
+    Requires    : Internet access to ftp.ext.hp.com and hpia.hpcloud.hp.com
+    Version     : 1.2
+    Ninja Note  : Script variable "rebootIfRequired" (Checkbox) — when checked, machine
+                  auto-restarts if HPIA reports a pending reboot; when unchecked, only
+                  logs that a reboot is needed.
+.CHANGELOG
+    1.1 - 05-06-2026 - Initial published version: HPIA download/install, BIOS/Drivers/Firmware
+                       analyze-and-install, JSON result parsing, reboot detection (log only)
+    1.2 - 05-06-2026 - Added rebootIfRequired checkbox variable; auto-restarts via
+                       Restart-Computer -Force when reboot is required and the box is checked
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
