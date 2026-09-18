@@ -35,11 +35,10 @@
         read/share, even across a full run over hundreds of thousands of images.
       - Per-run counts (Succeeded / Failed / Skipped-too-small / Skipped-already-processed /
         space saved) are still printed to the console at the end.
-      - $LogDirectory defaults to a Logs folder next to the script. If you're running this on a
-        Ninja-managed endpoint via a scheduled/ad-hoc deployment rather than launching it by hand,
-        point $LogDirectory at a fixed path instead (e.g. C:\Scripts\Logs) -- the agent may stage
-        the script from a temp location that doesn't persist between runs, which would silently
-        wipe the manifest each time.
+      - $LogDirectory defaults to a Logs folder next to the script. If you're running this via a
+        scheduled task rather than launching it by hand, point $LogDirectory at a fixed path instead
+        of relying on the script's own location -- depending on how it's deployed, the working
+        directory at execution time may not be where you expect.
 .PARAMETER None
     No parameters. Edit $SearchPath and $MinFileSize below, then run.
 .EXAMPLE
@@ -53,11 +52,7 @@
     GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/General/Image-and-PDF-Resizing/Magick-Resize-JPG-PNG-Images-SafeOverwrite.ps1
     Environment : Windows 10/11
     Requires    : PowerShell 5.1+, ImageMagick (magick.exe in system PATH)
-    Version     : 1.1
-    Ninja Note  : Optional — if run on a Ninja-managed endpoint with a device custom field named
-                  resizeScriptLastRun (Type: Multi-line, automation write permission enabled), the
-                  script pushes a one-line run summary to it via Set-NinjaProperty at the end of
-                  every run. Silently skipped if the cmdlet or field isn't available.
+    Version     : 1.2
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -69,7 +64,7 @@ $MinFileSize      = 2.5MB
 $TargetResolution = '2048x2048>'
 $JpegQuality      = 88
 $PngCompression   = 9
-$LogDirectory     = Join-Path $PSScriptRoot 'Logs'   # next to the script by default -- see Ninja Note above if that's not appropriate for how this is being run
+$LogDirectory     = Join-Path $PSScriptRoot 'Logs'   # next to the script by default
 if (-not (Test-Path $LogDirectory)) {
     New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
 }
@@ -181,16 +176,6 @@ if ($errors.Count -gt 0) {
     Write-Host "No errors this run." -ForegroundColor Green
 }
 
-# Optional NinjaOne integration -- see Ninja Note above. Silently skipped if not running under the
-# Ninja agent (e.g. testing locally) or if the field doesn't exist.
-if (Get-Command Set-NinjaProperty -ErrorAction SilentlyContinue) {
-    try {
-        Set-NinjaProperty -Name "resizeScriptLastRun" -Value $summaryLine -Type "MultiLine"
-    } catch {
-        Write-Host "Could not write to NinjaOne custom field 'resizeScriptLastRun': $($_.Exception.Message)" -ForegroundColor Yellow
-    }
-}
-
-# Non-zero exit code on any failure -- lets a NinjaOne condition (or Task Scheduler "Last Run Result")
-# distinguish a clean run from one with errors, independent of the optional Ninja alerting above.
+# Non-zero exit code on any failure -- lets Task Scheduler's "Last Run Result" (or anything else
+# checking the exit code) distinguish a clean run from one with errors.
 if ($failed -gt 0) { exit 1 } else { exit 0 }
