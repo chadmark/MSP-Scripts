@@ -1,7 +1,12 @@
 <#
 .SYNOPSIS
-    Recursively resizes JPG and PNG images using ImageMagick, with verified-success overwrite and a CSV audit log.
+    Recursively resizes JPG and PNG images using ImageMagick, with verified-success overwrite,
+    resumable skip-if-already-processed tracking, and an errors-only CSV log.
 .DESCRIPTION
+    General-purpose, ad-hoc tool -- point $SearchPath at whatever folder needs cleaning up and run
+    it manually. For the automated, single-client scheduled version, see MSP-Configs\NinjaRMM\
+    ninja_ocpm_ocfs02_image_resize.ps1 (hardcoded path, NinjaOne custom field alerting wired in).
+
     Same core behavior as Magick-Resize-JPG-PNG-Images-Skip1MB.ps1: walks the target directory and all
     subdirectories, finds JPG and PNG files, and resizes them in place using ImageMagick. Files under
     $MinFileSize are skipped to avoid processing already-optimized images. ImageMagick settings are
@@ -13,9 +18,28 @@
       - The original is only overwritten (Move-Item) if magick exits 0 AND the temp file exists AND
         is non-zero length. If either check fails, the temp file is deleted and the original is left
         completely untouched.
-      - Every file processed — success, failure, or skip — is written to a CSV log with before/after
-        size and status, so you have a full audit trail of what changed.
-    Outputs are written back to the original file path once verified; the file is never left half-written.
+
+    Resumability (same pattern as Convert-HEIC-to-JPG-Bulk.ps1):
+      - Every successfully processed file's full path is appended to $ManifestPath (plain text,
+        one path per line). On each run, the manifest is loaded first and any file already in it
+        is skipped instantly — no re-resize, no magick call. This means re-running against the
+        whole tree only spends real work on files that are new since the last run, without needing
+        any timestamp comparison (which is unreliable across copies -- CreationTime changes when a
+        file is copied to a new location, LastWriteTime does not).
+      - Caveat: if a file at an already-processed path is later replaced with different content,
+        the manifest won't know to reprocess it (matched by path only, not by hash).
+
+    Logging:
+      - $ErrorLogPath only ever contains Failed rows (path, size, magick exit code, timestamp).
+        Successes and skips are NOT written there — keeps the file small enough to actually
+        read/share, even across a full run over hundreds of thousands of images.
+      - Per-run counts (Succeeded / Failed / Skipped-too-small / Skipped-already-processed /
+        space saved) are still printed to the console at the end.
+      - $LogDirectory defaults to a Logs folder next to the script. If you're running this on a
+        Ninja-managed endpoint via a scheduled/ad-hoc deployment rather than launching it by hand,
+        point $LogDirectory at a fixed path instead (e.g. C:\Scripts\Logs) -- the agent may stage
+        the script from a temp location that doesn't persist between runs, which would silently
+        wipe the manifest each time.
 .PARAMETER None
     No parameters. Edit $SearchPath and $MinFileSize below, then run.
 .EXAMPLE
@@ -25,11 +49,15 @@
     $SearchPath = "C:\ClientPhotos"
 .NOTES
     Author      : Chad Mark
-    Last Edit   : 09-17-2026
+    Last Edit   : 09-18-2026
     GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/General/Image-and-PDF-Resizing/Magick-Resize-JPG-PNG-Images-SafeOverwrite.ps1
     Environment : Windows 10/11
     Requires    : PowerShell 5.1+, ImageMagick (magick.exe in system PATH)
-    Version     : 1.0
+    Version     : 1.1
+    Ninja Note  : Optional — if run on a Ninja-managed endpoint with a device custom field named
+                  resizeScriptLastRun (Type: Multi-line, automation write permission enabled), the
+                  script pushes a one-line run summary to it via Set-NinjaProperty at the end of
+                  every run. Silently skipped if the cmdlet or field isn't available.
 .LINK
     https://github.com/chadmark/MSP-Scripts
 #>
@@ -41,27 +69,43 @@ $MinFileSize      = 2.5MB
 $TargetResolution = '2048x2048>'
 $JpegQuality      = 88
 $PngCompression   = 9
-$LogPath          = Join-Path $PSScriptRoot "Resize-Log-$(Get-Date -Format 'MM-dd-yyyy_HHmmss').csv"
+$LogDirectory     = Join-Path $PSScriptRoot 'Logs'   # next to the script by default -- see Ninja Note above if that's not appropriate for how this is being run
+if (-not (Test-Path $LogDirectory)) {
+    New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+}
+$ManifestPath     = Join-Path $LogDirectory 'Resize-Processed-Manifest.txt'
+$ErrorLogPath     = Join-Path $LogDirectory "Resize-Errors-$(Get-Date -Format 'MM-dd-yyyy_HHmmss').csv"
+# ---------------------------------------------------------------------------
+# Load manifest of already-processed files so re-runs skip them instantly
+# ---------------------------------------------------------------------------
+$processed = [System.Collections.Generic.HashSet[string]]::new()
+if (Test-Path $ManifestPath) {
+    Get-Content -Path $ManifestPath | ForEach-Object { [void]$processed.Add($_) }
+    Write-Host "Loaded manifest: $($processed.Count) file(s) already processed in prior runs.`n" -ForegroundColor Cyan
+}
+
+$errors = [System.Collections.Generic.List[object]]::new()
+$succeeded = 0
+$failed = 0
+$skippedSmall = 0
+$skippedDone = 0
+$totalSavedMB = 0.0
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-$log = [System.Collections.Generic.List[object]]::new()
-
-Get-ChildItem -Path $SearchPath -Recurse -Include *.jpg, *.jpeg, *.png -File | ForEach-Object {
+Get-ChildItem -Path $SearchPath -Recurse -Include *.jpg, *.jpeg, *.png -File -ErrorAction SilentlyContinue | ForEach-Object {
     $file = $_
+
+    if ($processed.Contains($file.FullName)) {
+        $skippedDone++
+        return
+    }
+
     $originalSizeMB = [math]::Round($file.Length / 1MB, 3)
 
     if ($file.Length -lt $MinFileSize) {
-        Write-Host "Skipped (too small): $($file.FullName)" -ForegroundColor Yellow
-        $log.Add([PSCustomObject]@{
-            Timestamp       = Get-Date -Format 'MM-dd-yyyy HH:mm:ss'
-            FullPath        = $file.FullName
-            Status          = 'Skipped'
-            SizeBeforeMB    = $originalSizeMB
-            SizeAfterMB     = $originalSizeMB
-            SavedMB         = 0
-            Detail          = 'Under MinFileSize threshold'
-        })
+        $skippedSmall++
         return
     }
 
@@ -105,37 +149,48 @@ Get-ChildItem -Path $SearchPath -Recurse -Include *.jpg, *.jpeg, *.png -File | F
         $newSizeMB = [math]::Round((Get-Item $tempPath).Length / 1MB, 3)
         Move-Item -Path $tempPath -Destination $file.FullName -Force
         Write-Host "Done: $($file.FullName) ($originalSizeMB MB -> $newSizeMB MB)" -ForegroundColor Green
-        $log.Add([PSCustomObject]@{
-            Timestamp       = Get-Date -Format 'MM-dd-yyyy HH:mm:ss'
-            FullPath        = $file.FullName
-            Status          = 'Success'
-            SizeBeforeMB    = $originalSizeMB
-            SizeAfterMB     = $newSizeMB
-            SavedMB         = [math]::Round($originalSizeMB - $newSizeMB, 3)
-            Detail          = ''
-        })
+
+        # Append to manifest immediately (not batched) so a crash mid-run doesn't lose progress
+        Add-Content -Path $ManifestPath -Value $file.FullName
+        $succeeded++
+        $script:totalSavedMB += ($originalSizeMB - $newSizeMB)
     } else {
         if (Test-Path $tempPath) { Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue }
         Write-Host "FAILED (original untouched): $($file.FullName)" -ForegroundColor Red
-        $log.Add([PSCustomObject]@{
-            Timestamp       = Get-Date -Format 'MM-dd-yyyy HH:mm:ss'
-            FullPath        = $file.FullName
-            Status          = 'Failed'
-            SizeBeforeMB    = $originalSizeMB
-            SizeAfterMB     = $originalSizeMB
-            SavedMB         = 0
-            Detail          = "magick exit code $magickExitCode"
+        $errors.Add([PSCustomObject]@{
+            Timestamp    = Get-Date -Format 'MM-dd-yyyy HH:mm:ss'
+            FullPath     = $file.FullName
+            SizeMB       = $originalSizeMB
+            Detail       = "magick exit code $magickExitCode"
         })
+        $failed++
     }
 }
 
-$log | Export-Csv -Path $LogPath -NoTypeInformation
+if ($errors.Count -gt 0) {
+    $errors | Export-Csv -Path $ErrorLogPath -NoTypeInformation
+}
 
-$succeeded = ($log | Where-Object Status -eq 'Success').Count
-$failed    = ($log | Where-Object Status -eq 'Failed').Count
-$skipped   = ($log | Where-Object Status -eq 'Skipped').Count
-$totalSavedMB = [math]::Round(($log | Measure-Object SavedMB -Sum).Sum, 2)
+$summaryLine = "SUMMARY: Succeeded=$succeeded Failed=$failed SkippedSmall=$skippedSmall SkippedAlreadyProcessed=$skippedDone SpaceSavedMB=$([math]::Round($totalSavedMB, 2)) RunTime=$(Get-Date -Format 'MM-dd-yyyy HH:mm:ss')"
 
 Write-Host ""
-Write-Host "Done. Succeeded: $succeeded | Failed: $failed | Skipped: $skipped | Space saved: $totalSavedMB MB" -ForegroundColor Cyan
-Write-Host "Log saved to: $LogPath" -ForegroundColor Cyan
+Write-Host "=== $summaryLine ===" -ForegroundColor Cyan
+if ($errors.Count -gt 0) {
+    Write-Host "Errors logged to: $ErrorLogPath" -ForegroundColor Red
+} else {
+    Write-Host "No errors this run." -ForegroundColor Green
+}
+
+# Optional NinjaOne integration -- see Ninja Note above. Silently skipped if not running under the
+# Ninja agent (e.g. testing locally) or if the field doesn't exist.
+if (Get-Command Set-NinjaProperty -ErrorAction SilentlyContinue) {
+    try {
+        Set-NinjaProperty -Name "resizeScriptLastRun" -Value $summaryLine -Type "MultiLine"
+    } catch {
+        Write-Host "Could not write to NinjaOne custom field 'resizeScriptLastRun': $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
+# Non-zero exit code on any failure -- lets a NinjaOne condition (or Task Scheduler "Last Run Result")
+# distinguish a clean run from one with errors, independent of the optional Ninja alerting above.
+if ($failed -gt 0) { exit 1 } else { exit 0 }
