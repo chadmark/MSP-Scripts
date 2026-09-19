@@ -66,43 +66,30 @@
 
 .PARAMETER MinFileSize
     Minimum file size (in bytes) a PDF must be to get processed. Supports
-    PowerShell size literals such as 1MB, 500KB. Defaults to 1MB.
+    PowerShell size literals such as 1MB, 500KB. Defaults to 10MB.
 
 .EXAMPLE
     # Normal run against the current directory:
-    PS C:\Documents> .\GS-Compress-PDF-Skip1MB.ps1
+    PS C:\Documents> .\GS-Compress-PDF-Skip10MB.ps1
 
 .EXAMPLE
     # Use the ebook preset instead of the screen default:
-    .\GS-Compress-PDF-Skip1MB.ps1 -PDFSettings ebook
+    .\GS-Compress-PDF-Skip10MB.ps1 -PDFSettings ebook
 
 .EXAMPLE
     # Only process files 5MB or larger:
-    .\GS-Compress-PDF-Skip1MB.ps1 -MinFileSize 5MB
+    .\GS-Compress-PDF-Skip10MB.ps1 -MinFileSize 5MB
 
 .EXAMPLE
     # Point at a different root directory:
-    .\GS-Compress-PDF-Skip1MB.ps1 -RootPath "D:\Scanned Documents"
+    .\GS-Compress-PDF-Skip10MB.ps1 -RootPath "D:\Scanned Documents"
 
 .EXAMPLE
-    # After reviewing output, delete originals and promote compressed files
-    # up to their original locations. Run only after confirming the
-    # compressed output looks correct -- this is a manual step, not something
-    # the script does automatically.
-    $Root = (Get-Location).Path
-    $CompressedRoot = Join-Path $Root "compressed"
-
-    # Delete original PDFs (everything outside \compressed)
-    Get-ChildItem -Path $Root -Filter *.pdf -Recurse -File |
-        Where-Object { $_.FullName -notlike "$CompressedRoot\*" } |
-        Remove-Item
-
-    # Move compressed files back up, preserving relative structure
-    Get-ChildItem -Path $CompressedRoot -Filter *.pdf -Recurse -File | ForEach-Object {
-        $RelativePath = $_.FullName.Substring($CompressedRoot.Length).TrimStart('\')
-        $Dest = Join-Path $Root $RelativePath
-        Move-Item -Force $_.FullName $Dest
-    }
+    # Once you've reviewed the compressed output and are ready to replace
+    # the originals, use the companion script (destructive -- deletes
+    # originals, requires typed confirmation, only touches files that have
+    # a matching compressed counterpart):
+    .\GS-Compress-PDF-Replace-Originals.ps1
 
 .EXAMPLE
     # Verify Ghostscript is installed and accessible:
@@ -111,10 +98,12 @@
 .NOTES
     Author      : Chad Mark
     Last Edit   : 2026-09-18
-    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/General/GS-Compress-PDF-Skip1MB.ps1
+    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/General/GS-Compress-PDF-Skip10MB.ps1
     Environment : Windows 10/11
     Requires    : PowerShell 5.1+, Ghostscript (gswin64c.exe in system PATH)
     Version     : 2.0
+    Companion   : GS-Compress-PDF-Replace-Originals.ps1 -- run after reviewing
+                  \compressed to replace originals (destructive, confirms first)
 
     Ghostscript Installation:
       Download from https://www.ghostscript.com/releases/gsdnld.html
@@ -191,7 +180,7 @@ function Test-IsUnderPath {
 # Console banner
 # ---------------------------------------------------------------------------
 
-Write-Host "GS-Compress-PDF-Skip1MB v2.0" -ForegroundColor Cyan
+Write-Host "GS-Compress-PDF-Skip10MB v2.0" -ForegroundColor Cyan
 Write-Host "Root path : $RootPath" -ForegroundColor Cyan
 Write-Host "Preset    : $PDFSettingsArg" -ForegroundColor Cyan
 Write-Host "Min size  : $(Format-FileSize $MinFileSize)" -ForegroundColor Cyan
