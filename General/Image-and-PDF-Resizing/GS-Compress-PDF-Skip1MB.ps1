@@ -132,7 +132,7 @@ param (
     [ValidateSet('screen', 'ebook', 'printer', 'prepress', 'default')]
     [string]$PDFSettings = 'screen',
 
-    [long]$MinFileSize = 1MB
+    [long]$MinFileSize = 10MB
 )
 
 # ---------------------------------------------------------------------------
