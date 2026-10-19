@@ -11,7 +11,7 @@
 .NOTES
     Author      : Chad Mark
     Last Edit   : 10-19-2026
-    GitHub      : https://github.com/chadmark/MSP-Scripts/new/main/Ninjaninja_localadmin_Normans_NNIAdmin.ps1
+    GitHub      : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_disable_AdminAdministrator_CreateLocalAdmin_SetRandomPassword.ps1
     Environment : NinjaOne RMM — runs as SYSTEM on domain-joined Windows endpoints
     Requires    : PowerShell 3.0+
     Version     : 1.1
