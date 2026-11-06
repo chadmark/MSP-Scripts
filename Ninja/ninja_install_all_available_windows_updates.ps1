@@ -3,11 +3,12 @@
     Installs all available Windows updates silently without reboot.
 
     .DESCRIPTION
-    Ensures PSWindowsUpdate 2.2.0.3 is installed (pinned for stability), registers
-    the Microsoft Update service, scans and reports the number of available updates,
-    then installs them. Exits early if no updates are found. Uses -ServiceID
-    instead of the -MicrosoftUpdate switch on Get-WindowsUpdate to avoid a known
-    ArgumentException in newer PSWindowsUpdate builds.
+    Ensures PSWindowsUpdate is installed (latest from PSGallery, or a pinned version
+    if $pinnedVersion is set), registers the Microsoft Update service, scans and
+    reports the number of available updates, then installs them. Exits early if no
+    updates are found. Uses -ServiceID instead of the -MicrosoftUpdate switch on
+    Get-WindowsUpdate to avoid the "Value does not fall within the expected range"
+    ArgumentException.
 
     .NOTES
     Original Author : Aaron Stevenson
@@ -16,7 +17,7 @@
     GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_install_all_available_windows_updates.ps1
     Environment     : Windows 10/11, NinjaOne RMM (runs as SYSTEM)
     Requires        : PowerShell 5.1+, Internet access
-    Version         : 1.6
+    Version         : 1.7
     Ninja Note      : Script variable required:
                       forceReboot | Env: forceReboot | Type: Checkbox
                       Unchecked = suppress reboot (-IgnoreReboot)
@@ -24,12 +25,13 @@
 
     .CHANGELOG
     1.0 - 05-05-2026 - Initial release
-    1.1 - 05-05-2026 - Added Add-WUServiceManager to register Microsoft Update service before Get-WindowsUpdate
-    1.2 - 05-05-2026 - Pinned PSWindowsUpdate to 2.2.0.3; switched Get-WindowsUpdate to use -ServiceID instead of -MicrosoftUpdate
-    1.3 - 05-08-2026 - Added Set-ExecutionPolicy Bypass (Process scope) for interactive use on restricted machines
-    1.4 - 11-06-2026 - Added pre-install scan that reports update count and titles; exits early when none found
-    1.5 - 11-06-2026 - Fixed update count (unroll collection returned by Get-WindowsUpdate); compact install output with per-result summary
-    1.6 - 11-06-2026 - De-duplicated install results (module emits each update once per stage); keep final state per KB/Title
+    1.1 - 05-05-2026 - Register Microsoft Update service
+    1.2 - 05-05-2026 - Pin PSWindowsUpdate 2.2.0.3; use -ServiceID
+    1.3 - 05-08-2026 - Process-scope execution policy bypass
+    1.4 - 11-06-2026 - Report update count before install; exit if none
+    1.5 - 11-06-2026 - Fix count; compact results table and summary
+    1.6 - 11-06-2026 - One result row per update
+    1.7 - 11-06-2026 - Unpin by default (blank = latest); show (no KB) for driver updates
 
     .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -65,19 +67,27 @@ function Install-PSWindowsUpdate {
             Set-PSRepository -Name 'PSGallery' -InstallationPolicy 'Trusted'
         }
 
-        # Pin to 2.2.0.3 — last widely-tested stable version.
-        # Newer builds have a known ArgumentException when calling Get-WindowsUpdate
-        # against the Microsoft Update service on some Windows builds.
-        $pinnedVersion = '2.2.0.3'
-        $installed = Get-Module -ListAvailable -Name 'PSWindowsUpdate' |
-                     Where-Object { $_.Version -eq $pinnedVersion }
+        # Leave blank to use the latest version from PSGallery.
+        # Set to a specific version (e.g. '2.2.0.3') to pin it.
+        $pinnedVersion = ''
 
-        if (-not $installed) {
-            Write-Output "Installing PSWindowsUpdate $pinnedVersion..."
-            Install-Module -Name 'PSWindowsUpdate' -RequiredVersion $pinnedVersion -Force
+        if ([string]::IsNullOrWhiteSpace($pinnedVersion)) {
+            $targetVersion = (Find-Module -Name 'PSWindowsUpdate' -Repository 'PSGallery').Version.ToString()
+            Write-Output "Using latest PSWindowsUpdate version: $targetVersion"
+        } else {
+            $targetVersion = $pinnedVersion
+            Write-Output "Using pinned PSWindowsUpdate version: $targetVersion"
         }
 
-        Import-Module 'PSWindowsUpdate' -RequiredVersion $pinnedVersion -Force
+        $installed = Get-Module -ListAvailable -Name 'PSWindowsUpdate' |
+                     Where-Object { $_.Version -eq [version]$targetVersion }
+
+        if (-not $installed) {
+            Write-Output "Installing PSWindowsUpdate $targetVersion..."
+            Install-Module -Name 'PSWindowsUpdate' -RequiredVersion $targetVersion -Force
+        }
+
+        Import-Module 'PSWindowsUpdate' -RequiredVersion $targetVersion -Force
         Write-Output 'Modules installed successfully.'
     }
     catch {
@@ -123,7 +133,10 @@ if ($UpdateCount -eq 0) {
 }
 
 Write-Output "Found $UpdateCount update(s) to install:"
-$AvailableUpdates | ForEach-Object { Write-Output "  - $($_.KB) $($_.Title)" }
+$AvailableUpdates | ForEach-Object {
+    $kb = if ($_.KB) { $_.KB } else { '(no KB)' }
+    Write-Output "  - $kb $($_.Title)"
+}
 
 # Install all available updates
 Write-Output "`nInstalling $UpdateCount update(s)..."
@@ -145,7 +158,7 @@ $InstallResults = @($InstallResults |
 # Compact per-update results
 Write-Output "`nInstall results:"
 $InstallResults |
-    Select-Object KB, Result, Title |
+    Select-Object @{ Name = 'KB'; Expression = { if ($_.KB) { $_.KB } else { '(no KB)' } } }, Result, Title |
     Format-Table -AutoSize -Wrap |
     Out-String -Width 250 |
     Write-Output
