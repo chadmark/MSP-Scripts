@@ -16,7 +16,7 @@
     GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_install_all_available_windows_updates.ps1
     Environment     : Windows 10/11, NinjaOne RMM (runs as SYSTEM)
     Requires        : PowerShell 5.1+, Internet access
-    Version         : 1.4
+    Version         : 1.6
     Ninja Note      : Script variable required:
                       forceReboot | Env: forceReboot | Type: Checkbox
                       Unchecked = suppress reboot (-IgnoreReboot)
@@ -28,6 +28,8 @@
     1.2 - 05-05-2026 - Pinned PSWindowsUpdate to 2.2.0.3; switched Get-WindowsUpdate to use -ServiceID instead of -MicrosoftUpdate
     1.3 - 05-08-2026 - Added Set-ExecutionPolicy Bypass (Process scope) for interactive use on restricted machines
     1.4 - 11-06-2026 - Added pre-install scan that reports update count and titles; exits early when none found
+    1.5 - 11-06-2026 - Fixed update count (unroll collection returned by Get-WindowsUpdate); compact install output with per-result summary
+    1.6 - 11-06-2026 - De-duplicated install results (module emits each update once per stage); keep final state per KB/Title
 
     .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -109,7 +111,10 @@ catch {
 # -ServiceID targets Microsoft Update directly instead of using the -MicrosoftUpdate
 # switch, which throws "Value does not fall within the expected range" on affected builds.
 Write-Output "`nChecking for available updates..."
-$AvailableUpdates = @(Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID)
+# Get-WindowsUpdate can return the whole update list as ONE collection object,
+# so @() alone yields a count of 1. ForEach-Object { $_ } unrolls it into
+# individual updates so .Count is accurate.
+$AvailableUpdates = @(Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID | ForEach-Object { $_ })
 $UpdateCount = $AvailableUpdates.Count
 
 if ($UpdateCount -eq 0) {
@@ -122,8 +127,31 @@ $AvailableUpdates | ForEach-Object { Write-Output "  - $($_.KB) $($_.Title)" }
 
 # Install all available updates
 Write-Output "`nInstalling $UpdateCount update(s)..."
+# Capture install output instead of letting it print every property of every
+# update (that verbose dump gets truncated by Ninja's output limit).
 if ($ForceReboot -eq "true") {
-    Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -AutoReboot
+    $InstallResults = @(Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -AutoReboot | ForEach-Object { $_ })
 } else {
-    Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -IgnoreReboot
+    $InstallResults = @(Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -IgnoreReboot | ForEach-Object { $_ })
+}
+
+# PSWindowsUpdate emits each update once per stage (Accept, Download, Install).
+# Collapse to one row per update, keeping the last (final) state. Group on
+# KB + Title because one KB can cover two different updates.
+$InstallResults = @($InstallResults |
+    Group-Object KB, Title |
+    ForEach-Object { $_.Group[-1] })
+
+# Compact per-update results
+Write-Output "`nInstall results:"
+$InstallResults |
+    Select-Object KB, Result, Title |
+    Format-Table -AutoSize -Wrap |
+    Out-String -Width 250 |
+    Write-Output
+
+# Summary counts by result (e.g. Installed / Failed)
+Write-Output 'Summary:'
+$InstallResults | Group-Object Result | ForEach-Object {
+    Write-Output "  $($_.Name): $($_.Count)"
 }
