@@ -4,18 +4,19 @@
 
     .DESCRIPTION
     Ensures PSWindowsUpdate 2.2.0.3 is installed (pinned for stability), registers
-    the Microsoft Update service, then installs all available updates. Uses -ServiceID
+    the Microsoft Update service, scans and reports the number of available updates,
+    then installs them. Exits early if no updates are found. Uses -ServiceID
     instead of the -MicrosoftUpdate switch on Get-WindowsUpdate to avoid a known
     ArgumentException in newer PSWindowsUpdate builds.
 
     .NOTES
     Original Author : Aaron Stevenson
     Author          : Chad Mark
-    Last Edit       : 05-08-2026
+    Last Edit       : 11-06-2026
     GitHub          : https://github.com/chadmark/MSP-Scripts/blob/main/Ninja/ninja_install_all_available_windows_updates.ps1
     Environment     : Windows 10/11, NinjaOne RMM (runs as SYSTEM)
     Requires        : PowerShell 5.1+, Internet access
-    Version         : 1.3
+    Version         : 1.4
     Ninja Note      : Script variable required:
                       forceReboot | Env: forceReboot | Type: Checkbox
                       Unchecked = suppress reboot (-IgnoreReboot)
@@ -26,6 +27,7 @@
     1.1 - 05-05-2026 - Added Add-WUServiceManager to register Microsoft Update service before Get-WindowsUpdate
     1.2 - 05-05-2026 - Pinned PSWindowsUpdate to 2.2.0.3; switched Get-WindowsUpdate to use -ServiceID instead of -MicrosoftUpdate
     1.3 - 05-08-2026 - Added Set-ExecutionPolicy Bypass (Process scope) for interactive use on restricted machines
+    1.4 - 11-06-2026 - Added pre-install scan that reports update count and titles; exits early when none found
 
     .LINK
     https://github.com/chadmark/MSP-Scripts
@@ -103,10 +105,23 @@ catch {
     Write-Output "Note: Microsoft Update service registration skipped — $_"
 }
 
-# Install all available updates.
+# Scan first so we can report how many updates will be applied.
 # -ServiceID targets Microsoft Update directly instead of using the -MicrosoftUpdate
 # switch, which throws "Value does not fall within the expected range" on affected builds.
 Write-Output "`nChecking for available updates..."
+$AvailableUpdates = @(Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID)
+$UpdateCount = $AvailableUpdates.Count
+
+if ($UpdateCount -eq 0) {
+    Write-Output 'No updates found. Nothing to install.'
+    exit 0
+}
+
+Write-Output "Found $UpdateCount update(s) to install:"
+$AvailableUpdates | ForEach-Object { Write-Output "  - $($_.KB) $($_.Title)" }
+
+# Install all available updates
+Write-Output "`nInstalling $UpdateCount update(s)..."
 if ($ForceReboot -eq "true") {
     Get-WindowsUpdate -ServiceID $MicrosoftUpdateServiceID -AcceptAll -Install -AutoReboot
 } else {
